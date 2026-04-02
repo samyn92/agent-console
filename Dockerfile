@@ -1,5 +1,5 @@
-# Build frontend
-FROM node:22-alpine AS frontend-builder
+# Build frontend — Node produces platform-independent JS bundles
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app/web
 
@@ -9,8 +9,10 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-# Build backend
-FROM golang:1.25-alpine AS backend-builder
+# Build backend — runs natively on the build host, cross-compiles for TARGETARCH
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -19,7 +21,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o console ./cmd/console
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -a -installsuffix cgo -o console ./cmd/console
 
 # Runtime stage
 FROM gcr.io/distroless/static:nonroot
