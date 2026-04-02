@@ -338,8 +338,21 @@ export function chatWithAgent(
   // Track seen part IDs to dedupe
   const seenParts = new Set<string>();
 
+  // Debounce timer for session.idle — gives time for late-arriving events
+  // after tool calls complete (OpenCode may fire session.idle between steps)
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const IDLE_DEBOUNCE_MS = 500;
+
+  const clearIdleTimer = () => {
+    if (idleTimer !== null) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+  };
+
   const cleanup = () => {
     isComplete = true;
+    clearIdleTimer();
     unsubscribeEvents?.();
     unsubscribeEvents = null;
     controller.abort();
@@ -361,6 +374,9 @@ export function chatWithAgent(
 
     switch (event.type) {
       case 'message.part.updated': {
+        // New content arriving — cancel any pending idle finalization
+        clearIdleTimer();
+
         const part = props.part as Record<string, unknown>;
         const delta = props.delta as string | undefined;
         const partId = part?.id as string;
@@ -456,10 +472,17 @@ export function chatWithAgent(
       }
 
       case 'session.idle': {
-        // Agent finished processing
+        // Agent finished a processing step. OpenCode may fire session.idle
+        // between inference steps (e.g., after a tool call completes but before
+        // the next text generation step). Debounce to avoid premature cleanup.
         if (!isComplete) {
-          callbacks.onDone();
-          cleanup();
+          clearIdleTimer();
+          idleTimer = setTimeout(() => {
+            if (!isComplete) {
+              callbacks.onDone();
+              cleanup();
+            }
+          }, IDLE_DEBOUNCE_MS);
         }
         break;
       }
