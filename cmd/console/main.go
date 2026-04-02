@@ -45,6 +45,17 @@ func main() {
 	log := logger.Sugar()
 	log.Info("Starting Agent Operator Console")
 
+	// Log agent routing mode so operators know which path is active
+	if override := os.Getenv("AGENT_URL_OVERRIDE"); override != "" {
+		log.Warnw("AGENT_URL_OVERRIDE is set — ALL agents will use the same backend (single-agent mode)",
+			"url", override)
+	} else if proxyURL := os.Getenv("KUBECTL_PROXY_URL"); proxyURL != "" {
+		log.Infow("Using kubectl proxy for per-agent routing (multi-agent mode)",
+			"proxyURL", proxyURL)
+	} else {
+		log.Info("Using in-cluster service DNS for per-agent routing (production mode)")
+	}
+
 	// Create context that listens for shutdown signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

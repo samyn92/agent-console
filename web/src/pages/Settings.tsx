@@ -105,7 +105,7 @@ const Select: Component<{
     <select
       value={props.value}
       onChange={(e) => props.onChange(e.currentTarget.value)}
-      class="px-3 py-1.5 bg-surface-hover border border-border rounded-lg text-sm text-text focus:outline-none focus:ring-1 focus:ring-text/30 focus:border-text/50"
+      class="px-3 py-1.5 bg-surface-hover border border-border rounded-lg text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent"
     >
       <For each={props.options}>
         {(opt) => <option value={opt.value}>{opt.label}</option>}
@@ -235,7 +235,7 @@ const SettingsPage: Component = () => {
             value={settings().defaultNamespace}
             onInput={(e) => setSettings({ ...settings(), defaultNamespace: e.currentTarget.value })}
             placeholder="All namespaces"
-            class="px-3 py-1.5 w-48 bg-surface-hover border border-border rounded-lg text-sm text-text placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-text/30 focus:border-text/50"
+            class="px-3 py-1.5 w-48 bg-surface-hover border border-border rounded-lg text-sm text-text placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent"
           />
         </div>
       </SettingsSection>

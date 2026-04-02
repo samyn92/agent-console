@@ -4,6 +4,16 @@
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:9090' : '';
 
+// Error class that preserves HTTP status for callers to distinguish 404 vs transient errors
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 // Generic fetch with error handling
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -15,8 +25,14 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || `HTTP ${response.status}`);
+    let message = `HTTP ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.error || error.data?.message || message;
+    } catch {
+      // response body wasn't JSON — keep the default message
+    }
+    throw new ApiError(message, response.status);
   }
 
   return response.json();

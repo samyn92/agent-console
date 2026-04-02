@@ -177,7 +177,7 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
               }
             }}
             placeholder="Type your answer..."
-            class="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg text-text placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-text/30 focus:border-text/50"
+            class="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg text-text placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent"
           />
         </div>
 

@@ -83,6 +83,7 @@ func (s *Server) setupRoutes() {
 		r.Group(func(r chi.Router) {
 			r.Get("/watch", h.Watch)
 			r.Get("/watch/traces", th.WatchTraces)
+			r.Get("/agents/events", h.GlobalAgentEvents)
 			r.Get("/agents/{namespace}/{name}/events", h.AgentEvents)
 		})
 

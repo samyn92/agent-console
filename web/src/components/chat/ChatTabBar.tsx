@@ -1,10 +1,12 @@
 import { type Component, For, Show, createEffect, onMount, onCleanup } from "solid-js";
 import { FiX, FiPlus, FiMessageSquare, FiClock } from "solid-icons/fi";
 import type { SessionTab } from "../../stores/sessions";
+import NeuralTrace from "../NeuralTrace";
 
 interface ChatTabBarProps {
   tabs: SessionTab[];
   activeSessionId: string | null;
+  busySessionIds?: string[];
   onSwitchTab: (sessionId: string) => void;
   onCloseTab: (sessionId: string) => void;
   onNewChat: () => void;
@@ -77,6 +79,7 @@ const ChatTabBar: Component<ChatTabBarProps> = (props) => {
         <For each={props.tabs}>
           {(tab) => {
             const isActive = () => props.activeSessionId === tab.sessionId;
+            const isBusy = () => props.busySessionIds?.includes(tab.sessionId) ?? false;
             return (
               <button
                 ref={(el) => tabRefs.set(tab.sessionId, el)}
@@ -88,9 +91,23 @@ const ChatTabBar: Component<ChatTabBarProps> = (props) => {
                     : "text-text-muted hover:text-text-secondary hover:bg-surface-hover/30"
                 }`}
               >
-                {/* Active indicator */}
+                {/* Active indicator — neural trace beam when busy, static bar otherwise */}
                 <Show when={isActive()}>
-                  <div class="tab-active-indicator" />
+                  <Show
+                    when={isBusy()}
+                    fallback={<div class="tab-active-indicator" />}
+                  >
+                    <div class="absolute bottom-0 left-1 right-1" style={{ height: "2px" }}>
+                      <NeuralTrace size="sm" color="accent" inline />
+                    </div>
+                  </Show>
+                </Show>
+
+                {/* Non-active busy tabs also get a subtle trace */}
+                <Show when={!isActive() && isBusy()}>
+                  <div class="absolute bottom-0 left-2 right-2" style={{ height: "2px" }}>
+                    <NeuralTrace size="sm" color="success" inline />
+                  </div>
                 </Show>
 
                 <FiMessageSquare

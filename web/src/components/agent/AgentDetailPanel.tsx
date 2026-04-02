@@ -1,7 +1,6 @@
 import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
 import {
   FiCpu, FiChevronDown, FiTool, FiBookOpen,
-  FiClock, FiGitBranch,
   FiTerminal, FiFileText, FiEdit, FiSearch, FiGlobe, FiUsers,
   FiEye, FiFile, FiCheck
 } from "solid-icons/fi";
@@ -149,10 +148,8 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
           </div>
           <div class="flex items-center gap-1.5 text-xs text-text-muted leading-tight">
             <span class="truncate">{getModelShort(props.agent.spec.model)}</span>
-            <Show when={agentCapabilities().length > 0}>
-              <span class="text-border-hover">·</span>
-              <span>{agentCapabilities().length} capabilities</span>
-            </Show>
+            <span class="text-border-hover">·</span>
+            <span>{formatTimestamp(props.agent.metadata.creationTimestamp)}</span>
           </div>
         </div>
 
@@ -280,24 +277,18 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
 
       {/* ===== Selected Agent Details (when dropdown closed) ===== */}
       <Show when={!selectorOpen()}>
-        {/* Metadata badges */}
-        <div class="px-3 pb-2 flex items-center gap-1.5 flex-wrap">
-          <span class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border ${
-            props.agent.status?.ready
-              ? "bg-success/10 border-success/20 text-success"
-              : "bg-warning/10 border-warning/20 text-warning"
-          }`}>
-            <span class="w-1 h-1 rounded-full bg-current" />
-            {props.agent.status?.ready ? "Ready" : props.agent.status?.phase || "Pending"}
-          </span>
+        {/* System Prompt (above capabilities, no label) */}
+        <Show when={props.agent.spec.identity?.systemPrompt}>
+          <div class="border-t border-border/30 px-3 py-2">
+            <div class="bg-surface-2 rounded-md border border-border">
+              <div class="px-2.5 py-2 text-[11px] font-mono text-text-secondary whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
+                {props.agent.spec.identity?.systemPrompt}
+              </div>
+            </div>
+          </div>
+        </Show>
 
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-surface-2 border border-border rounded text-text-muted">
-            <FiClock class="w-2.5 h-2.5" />
-            {formatTimestamp(props.agent.metadata.creationTimestamp)}
-          </span>
-        </div>
-
-        {/* Capabilities (always visible) */}
+        {/* Capabilities */}
         <Show when={agentCapabilities().length > 0}>
           <div class="border-t border-border/30 px-3 py-2">
             <div class="flex items-center gap-1.5 mb-1.5">
@@ -340,27 +331,6 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
             </div>
           </div>
         </Show>
-
-        {/* System Prompt (always visible, scrollable) */}
-        <Show when={props.agent.spec.identity?.systemPrompt}>
-          <div class="border-t border-border/30 px-3 py-2">
-            <div class="flex items-center gap-1.5 mb-1.5">
-              <FiFileText class="w-3 h-3 text-text-muted" />
-              <span class="text-[11px] font-medium text-text-secondary">System Prompt</span>
-            </div>
-            <div class="bg-surface-2 rounded-md border border-border">
-              <div class="px-2.5 py-2 text-[11px] font-mono text-text-secondary whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
-                {props.agent.spec.identity?.systemPrompt}
-              </div>
-            </div>
-          </div>
-        </Show>
-
-        {/* GitOps indicator */}
-        <div class="border-t border-border/50 px-3 py-1.5 flex items-center gap-2">
-          <FiGitBranch class="w-2.5 h-2.5 text-text-muted" />
-          <span class="text-[10px] text-text-muted">GitOps Managed</span>
-        </div>
       </Show>
     </div>
   );

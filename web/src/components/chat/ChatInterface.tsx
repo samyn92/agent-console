@@ -1,6 +1,6 @@
 import type { Component } from "solid-js";
 import { createSignal, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
-import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText } from "solid-icons/fi";
+import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye } from "solid-icons/fi";
 import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
@@ -9,10 +9,12 @@ import { formatContextForAgent } from "./ContextBar";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
 import type { SelectedContext } from "../../types/context";
-import { chatWithAgent, replyToQuestion, rejectQuestion, replyToPermission, abortSession, getSessionMessages } from "../../lib/api";
-import type { PendingPermission } from "../../lib/api";
+import { chatWithAgent, replyToQuestion, rejectQuestion, replyToPermission, abortSession, getSessionMessages, ApiError } from "../../lib/api";
+import type { AgentResponse, CapabilityResponse, PendingPermission } from "../../lib/api";
 import { sessionStore } from "../../stores/sessions";
 import Markdown, { StreamingMarkdown } from "./Markdown";
+import NeuralTrace from "../NeuralTrace";
+import { detectToolCategory, toolThemes, getCategoryIcon, getCategoryLabel } from "../../lib/capability-themes";
 
 interface ChatInterfaceProps {
   namespace: string;
@@ -21,6 +23,8 @@ interface ChatInterfaceProps {
   sessionId?: string;
   onToolPartsUpdate?: (toolParts: ToolPart[]) => void;
   selectedContexts?: SelectedContext[];
+  agent?: AgentResponse;
+  capabilities?: CapabilityResponse[];
 }
 
 /** Renders a single MessagePart inline in the chat */
@@ -247,6 +251,9 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
   const [streamingParts, setStreamingParts] = createSignal<MessagePart[]>([]);
   const [currentTextBuffer, setCurrentTextBuffer] = createSignal("");
+  // Hide the message container until we've scrolled to the bottom after loading
+  // history, so the user never sees the scroll-from-top animation.
+  const [isLoadingHistory, setIsLoadingHistory] = createSignal(!!props.sessionId);
   const [error, setError] = createSignal<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = createSignal<PendingQuestion | null>(null);
   const [pendingPermission, setPendingPermission] = createSignal<PendingPermission | null>(null);
@@ -368,6 +375,7 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   // --- Scroll management: rAF-debounced, user-scroll-aware ---
   const [userScrolledAway, setUserScrolledAway] = createSignal(false);
   let scrollRAF: number | null = null;
+  let isProgrammaticScroll = false;
 
   const isNearBottom = () => {
     if (!messagesContainerRef) return true;
@@ -376,7 +384,8 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   };
 
   const handleScroll = () => {
-    // If user scrolled away from bottom, stop auto-scrolling
+    // Ignore scroll events triggered by our own programmatic scrolls
+    if (isProgrammaticScroll) return;
     setUserScrolledAway(!isNearBottom());
   };
 
@@ -386,8 +395,32 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     scrollRAF = requestAnimationFrame(() => {
       scrollRAF = null;
       if (messagesEndRef && !userScrolledAway()) {
+        isProgrammaticScroll = true;
         messagesEndRef.scrollIntoView({ behavior });
+        // Release the flag after a tick so the scroll events from this
+        // scrollIntoView call are suppressed
+        requestAnimationFrame(() => {
+          isProgrammaticScroll = false;
+        });
       }
+    });
+  };
+
+  /** Force-scroll to bottom, ignoring userScrolledAway. Used after initial load. */
+  const forceScrollToBottom = () => {
+    if (!messagesContainerRef) return;
+    // Synchronously snap to bottom before the browser paints.
+    // This avoids the visible "scroll down" animation entirely.
+    messagesContainerRef.scrollTop = messagesContainerRef.scrollHeight;
+    // After layout settles, do one more snap to catch any late content,
+    // then reveal the container.
+    requestAnimationFrame(() => {
+      if (messagesContainerRef) {
+        isProgrammaticScroll = true;
+        messagesContainerRef.scrollTop = messagesContainerRef.scrollHeight;
+        isProgrammaticScroll = false;
+      }
+      setIsLoadingHistory(false);
     });
   };
 
@@ -443,14 +476,14 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
 
     getSessionMessages(props.namespace, props.name, sid)
       .then((data) => {
-        if (!data) return;
+        if (!data) { setIsLoadingHistory(false); return; }
 
         const entries = data as Array<{
           info: { id: string; role: string; time?: { created: number } };
           parts: Array<Record<string, unknown>>;
         }>;
 
-        if (!Array.isArray(entries) || entries.length === 0) return;
+        if (!Array.isArray(entries) || entries.length === 0) { setIsLoadingHistory(false); return; }
 
         const msgs: ChatMessage[] = [];
 
@@ -513,10 +546,23 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
 
         if (msgs.length > 0) {
           setMessages(msgs);
+          // After loading a full conversation, force-scroll to the bottom
+          // regardless of userScrolledAway state
+          setUserScrolledAway(false);
+          forceScrollToBottom();
+        } else {
+          setIsLoadingHistory(false);
         }
       })
       .catch((err) => {
         console.warn("Failed to load session messages:", sid, err);
+        setIsLoadingHistory(false);
+        // If the session no longer exists on the backend, clean up and redirect
+        if (err instanceof ApiError && err.status === 404) {
+          sessionStore.handleSessionNotFound(sid);
+        } else {
+          setError("Failed to load chat history. The session may no longer exist.");
+        }
       });
   });
 
@@ -790,30 +836,159 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       </Show>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} onScroll={handleScroll} class="flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col">
+      <div ref={messagesContainerRef} onScroll={handleScroll} class={`flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col ${isLoadingHistory() ? "opacity-0" : "opacity-100"}`}>
         <Show
           when={messages().length > 0 || isStreaming()}
           fallback={
-            <div class="flex flex-col items-center justify-center flex-1 text-center px-4">
+            <div class="flex flex-col items-center justify-center flex-1 text-center px-4 overflow-y-auto">
               <div class="w-10 h-10 rounded-xl bg-surface-2 border border-border flex items-center justify-center mb-4">
-                <FiSend class="w-4 h-4 text-text-muted" />
+                <FiCpu class="w-4 h-4 text-text-muted" />
               </div>
               <h2 class="text-base font-semibold text-text mb-1.5">
                 Chat with {props.displayName}
               </h2>
+              <Show when={props.agent}>
+                <p class="text-xs text-text-muted mb-1">
+                  {props.agent!.spec.model.replace(/-\d{8}$/, "")}
+                  <Show when={props.agent!.metadata.namespace}>
+                    <span class="text-border-hover"> · </span>{props.agent!.metadata.namespace}
+                  </Show>
+                </p>
+              </Show>
               <p class="text-sm text-text-muted max-w-sm leading-relaxed">
                 Ask questions, request actions, or get help with your operations.
               </p>
+
+              {/* Capabilities display */}
+              <Show when={(() => {
+                const agent = props.agent;
+                const caps = props.capabilities;
+                if (!agent || !caps) return [];
+                const refs = agent.spec.capabilityRefs || [];
+                return refs.map(ref => {
+                  const cap = caps.find(c => c.metadata.name === ref.name);
+                  return cap ? { ref, capability: cap } : null;
+                }).filter(Boolean) as { ref: { name: string; alias?: string }; capability: CapabilityResponse }[];
+              })().length > 0}>
+                <div class="mt-5 w-full max-w-md">
+                  <div class="flex items-center justify-center gap-1.5 mb-2">
+                    <FiBookOpen class="w-3 h-3 text-text-muted" />
+                    <span class="text-[11px] font-medium text-text-secondary">Capabilities</span>
+                  </div>
+                  <div class="space-y-1.5 text-left">
+                    <For each={(() => {
+                      const agent = props.agent;
+                      const caps = props.capabilities;
+                      if (!agent || !caps) return [];
+                      const refs = agent.spec.capabilityRefs || [];
+                      return refs.map(ref => {
+                        const cap = caps.find(c => c.metadata.name === ref.name);
+                        return cap ? { ref, capability: cap } : null;
+                      }).filter(Boolean) as { ref: { name: string; alias?: string }; capability: CapabilityResponse }[];
+                    })()}>
+                      {({ ref, capability }) => {
+                        const cat = detectToolCategory(ref.alias || ref.name);
+                        const theme = toolThemes[cat];
+                        const Icon = getCategoryIcon(cat);
+                        const label = getCategoryLabel(cat);
+                        const imageName = () => {
+                          if (!capability.spec.image) return null;
+                          const img = capability.spec.image;
+                          const name = img.split("/").pop()?.split(":")[0] || img;
+                          const tag = img.includes(":") ? img.split(":").pop() : null;
+                          return { name, tag };
+                        };
+                        return (
+                          <div class={`rounded-lg border ${theme.border || "border-border"} ${theme.bg || "bg-surface-2"}`}>
+                            <div class={`flex items-center gap-2 px-2.5 py-1.5 rounded-t-lg ${theme.headerBg || ""}`}>
+                              <Icon class={`w-3.5 h-3.5 ${theme.iconColor} shrink-0`} />
+                              <span class="text-xs font-medium text-text truncate flex-1">{ref.alias || ref.name}</span>
+                            </div>
+                            <div class="px-2.5 pb-2 pt-1 flex items-center gap-1.5 flex-wrap">
+                              <Show when={label}>
+                                <span class={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${theme.badge}`}>
+                                  <Icon class="w-2.5 h-2.5" />
+                                  {label}
+                                </span>
+                              </Show>
+                              <Show when={capability.spec.type}>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-surface-2 border border-border/60 text-text-secondary">
+                                  {capability.spec.type}
+                                </span>
+                              </Show>
+                              <Show when={capability.spec.audit}>
+                                <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                                  <FiEye class="w-2.5 h-2.5" />
+                                  Audit
+                                </span>
+                              </Show>
+                              <Show when={capability.spec.permissions?.approve?.length}>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+                                  {capability.spec.permissions!.approve!.length} approval
+                                </span>
+                              </Show>
+                              <Show when={capability.spec.permissions?.deny?.length}>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-500/10 border border-red-500/20 text-red-400">
+                                  {capability.spec.permissions!.deny!.length} denied
+                                </span>
+                              </Show>
+                              <Show when={capability.spec.permissions?.allow?.length}>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                  {capability.spec.permissions!.allow!.length} allowed
+                                </span>
+                              </Show>
+                              <Show when={imageName()}>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-surface border border-border/40 text-text-muted truncate max-w-[140px]" title={capability.spec.image}>
+                                  {imageName()!.name}<Show when={imageName()!.tag}><span class="text-text-muted/60">:{imageName()!.tag}</span></Show>
+                                </span>
+                              </Show>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+
+              {/* Tools display */}
+              <Show when={(() => {
+                const agent = props.agent;
+                if (!agent?.spec.tools) return [];
+                return Object.entries(agent.spec.tools).filter(([, enabled]) => enabled).map(([name]) => name);
+              })().length > 0}>
+                <div class="mt-3 w-full max-w-md">
+                  <div class="flex items-center justify-center gap-1.5 mb-1.5">
+                    <FiTool class="w-3 h-3 text-text-muted" />
+                    <span class="text-[11px] font-medium text-text-secondary">Tools</span>
+                  </div>
+                  <div class="flex flex-wrap justify-center gap-1">
+                    <For each={(() => {
+                      const agent = props.agent;
+                      if (!agent?.spec.tools) return [];
+                      return Object.entries(agent.spec.tools).filter(([, enabled]) => enabled).map(([name]) => name);
+                    })()}>
+                      {(tool) => (
+                        <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] bg-surface-2/60 border border-border/60 rounded text-text-muted font-mono">
+                          {tool}
+                        </span>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+
+              {/* Quick prompts */}
               <div class="mt-5 flex flex-wrap justify-center gap-2">
                 <button 
                   onClick={() => { setInputValue("What can you help me with?"); textareaRef?.focus(); }}
-                  class="px-3 py-1.5 text-xs bg-surface-2 hover:bg-surface-hover border border-border rounded-full text-text-secondary transition-colors"
+                  class="px-3 py-1.5 text-xs bg-surface-2 hover:bg-surface-hover border border-border rounded-full text-text-secondary transition-colors cursor-pointer"
                 >
                   What can you help me with?
                 </button>
                 <button 
                   onClick={() => { setInputValue("Show me the cluster status"); textareaRef?.focus(); }}
-                  class="px-3 py-1.5 text-xs bg-surface-2 hover:bg-surface-hover border border-border rounded-full text-text-secondary transition-colors"
+                  class="px-3 py-1.5 text-xs bg-surface-2 hover:bg-surface-hover border border-border rounded-full text-text-secondary transition-colors cursor-pointer"
                 >
                   Show me the cluster status
                 </button>
@@ -840,24 +1015,20 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
               </div>
             </Show>
 
-            {/* Thinking indicator */}
+            {/* Thinking indicator — shown when a tool is running and no text is streaming */}
             <Show when={streamingParts().some(p => p.type === "tool" && p.toolPart.state.status === "running") && !currentTextBuffer()}>
-              <div class="flex justify-start">
-                <div class="flex items-center gap-2 text-sm text-text-muted py-1 px-1">
-                  <div class="w-3.5 h-3.5 border-[1.5px] border-text-muted/40 border-t-text-muted rounded-full animate-spin" />
-                  <span>Thinking...</span>
-                </div>
+              <div class="flex items-center gap-2 py-1 px-1">
+                <div class="w-3.5 h-3.5 border-[1.5px] border-text-muted/40 border-t-text-muted rounded-full animate-spin" />
+                <span class="text-xs text-text-muted">Thinking...</span>
               </div>
             </Show>
 
-            {/* Initial typing indicator */}
+            {/* Initial typing indicator — shown before any text or tool parts arrive */}
             <Show when={!currentTextBuffer() && streamingParts().length === 0}>
-              <div class="flex justify-start">
-                <div class="flex items-center gap-1 py-2 px-1">
-                  <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "0ms" }} />
-                  <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "150ms" }} />
-                  <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "300ms" }} />
-                </div>
+              <div class="flex items-center gap-1 py-2 px-1">
+                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "0ms" }} />
+                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "150ms" }} />
+                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "300ms" }} />
               </div>
             </Show>
           </Show>
@@ -890,11 +1061,18 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
 
       {/* ===== Composer ===== */}
       <div class="shrink-0 px-4 pb-4 pt-2">
-        <div
-          class={`composer-input rounded-xl border bg-surface transition-all ${
-            isFocused() ? "border-text/50 ring-1 ring-text/30" : "border-border"
-          }`}
-        >
+        <div class="relative">
+          {/* Neural trace beam — sits on the top border of the composer when streaming */}
+          <Show when={isStreaming()}>
+            <div class="absolute -top-[1px] left-3 right-3 z-10">
+              <NeuralTrace size="md" color="accent" />
+            </div>
+          </Show>
+          <div
+            class={`composer-input rounded-xl border bg-surface transition-all ${
+              isStreaming() ? "border-accent/30" : isFocused() ? "border-accent" : "border-border"
+            }`}
+          >
           <textarea
             ref={textareaRef}
             value={inputValue()}
@@ -939,6 +1117,7 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
                 <span>Stop</span>
               </button>
             </Show>
+          </div>
           </div>
         </div>
       </div>
