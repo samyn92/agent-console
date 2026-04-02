@@ -373,12 +373,24 @@ export function chatWithAgent(
     }
 
     switch (event.type) {
+      case 'message.part.delta': {
+        // Incremental text delta — OpenCode sends these for streaming text tokens.
+        // This is the ONLY place we call onToken for text. Do NOT also handle text
+        // in message.part.updated — OpenCode fires both events for each token,
+        // and handling both causes duplicate/tripled text.
+        clearIdleTimer();
+        const delta = props.delta as string;
+        if (delta) {
+          callbacks.onToken(delta);
+        }
+        break;
+      }
+
       case 'message.part.updated': {
         // New content arriving — cancel any pending idle finalization
         clearIdleTimer();
 
         const part = props.part as Record<string, unknown>;
-        const delta = props.delta as string | undefined;
         const partId = part?.id as string;
         const partType = part?.type as string;
 
@@ -386,10 +398,9 @@ export function chatWithAgent(
 
         switch (partType) {
           case 'text':
-            // Stream text tokens
-            if (delta) {
-              callbacks.onToken(delta);
-            }
+            // Text deltas are handled exclusively by message.part.delta above.
+            // message.part.updated for text carries the full accumulated text,
+            // NOT an incremental delta — emitting it here would duplicate output.
             break;
 
           case 'tool':
@@ -562,7 +573,9 @@ export function chatWithAgent(
   }
 
   unsubscribeEvents = subscribeToEventBus((event) => {
-    if (isComplete) return;
+      if (isComplete) {
+        return;
+      }
     handleACPEvent(event as ACPEvent);
   });
 
