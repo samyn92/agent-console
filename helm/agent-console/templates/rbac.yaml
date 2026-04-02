@@ -1,0 +1,47 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "agent-console.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-console.labels" . | nindent 4 }}
+rules:
+  # Read agents CRDs
+  - apiGroups: ["agents.io"]
+    resources: ["agents", "workflows", "workflowruns", "channels", "capabilities"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["agents.io"]
+    resources: ["agents/status", "workflows/status", "workflowruns/status", "channels/status", "capabilities/status"]
+    verbs: ["get"]
+  # Read core resources for K8s browser
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "events"]
+    verbs: ["get", "list", "watch"]
+  # Read secrets for Helm release metadata (type: helm.sh/release.v1)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  # Read apps resources for K8s browser
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # Proxy to agent pods/services for SSE event streaming
+  - apiGroups: [""]
+    resources: ["pods/proxy", "services/proxy"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "agent-console.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-console.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "agent-console.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-console.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: agent-console
+description: Web console for managing OpenCode AI agents deployed by Agent Operator
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/samyn92/agent-console
+sources:
+  - https://github.com/samyn92/agent-console
+keywords:
+  - ai
+  - agent
+  - opencode
+  - console
+  - dashboard
+maintainers:
+  - name: samyn92
+    url: https://github.com/samyn92

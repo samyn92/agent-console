@@ -1,0 +1,30 @@
+{
+  "name": "agent-console",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@kobalte/core": "^0.13.11",
+    "@solidjs/router": "^0.15.4",
+    "@tailwindcss/postcss": "^4.1.18",
+    "diff": "^8.0.3",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.1",
+    "postcss": "^8.5.6",
+    "solid-icons": "^1.2.0",
+    "solid-js": "^1.9.10",
+    "tailwindcss": "^4.1.18"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^24.10.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}

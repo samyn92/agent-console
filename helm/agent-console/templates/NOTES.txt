@@ -1,0 +1,26 @@
+Agent Console has been installed.
+
+Namespace: {{ .Release.Namespace }}
+
+To verify the installation:
+
+  kubectl get deployment {{ include "agent-console.fullname" . }} -n {{ .Release.Namespace }}
+
+{{- if .Values.ingress.enabled }}
+Access the console at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+To access the console, run:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "agent-console.fullname" . }} 8080:{{ .Values.service.port }}
+
+Then open http://localhost:8080 in your browser.
+{{- end }}
+
+To view console logs:
+
+  kubectl logs -f -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "agent-console.name" . }}
+
+Documentation: https://github.com/samyn92/agent-operator

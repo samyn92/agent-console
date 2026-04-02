@@ -1,0 +1,57 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/samyn92/agent-console
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: console.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# GitHub API integration (for Repositories page)
+github:
+  # Name of the secret containing the GitHub token
+  # Set to "" to disable GitHub integration
+  secretName: ""
+  # Key in the secret containing the token
+  secretKey: "token"
+
+# GitLab API integration (for Repositories page)
+gitlab:
+  # Name of the secret containing the GitLab token
+  # Set to "" to disable GitLab integration
+  secretName: ""
+  # Key in the secret containing the token
+  secretKey: "token"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
