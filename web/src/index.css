@@ -221,6 +221,92 @@
   box-shadow: 0 0 0 3px var(--accent-muted), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
+/* ===== Composer Processing Glow — ambient breathing border + shadow ===== */
+/* A unified 2.4s breathing rhythm creates a calm "alive" feel when the agent
+   is processing. The border color and outer glow pulse in sync. */
+.composer-input.composer-processing {
+  animation: composer-border-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 6%, transparent),
+      0 0 8px 0 color-mix(in srgb, var(--accent) 4%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-main));
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 0 20px 2px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+}
+
+:root.dark .composer-input.composer-processing {
+  animation: composer-border-breathe-dark 2.4s ease-in-out infinite;
+}
+
+@keyframes composer-border-breathe-dark {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border-main));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
+      0 0 10px 0 color-mix(in srgb, var(--accent) 6%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--border-main));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
+      0 0 24px 4px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Override focus-within when processing — let the breathing animation drive styles */
+.composer-input.composer-processing:focus-within {
+  box-shadow: inherit;
+  border-color: inherit;
+}
+
+/* ===== Session Row Processing Pulse — ambient background fade ===== */
+/* Matching 2.4s rhythm for sidebar session rows. The row background subtly
+   shifts with accent color, creating a cohesive "heartbeat" across the UI. */
+.session-row-processing {
+  animation: session-ambient-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes session-ambient-pulse {
+  0%, 100% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 3%, var(--bg-hover, transparent));
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 10%, var(--bg-hover, transparent));
+  }
+}
+
+:root.dark .session-row-processing {
+  animation: session-ambient-pulse-dark 2.4s ease-in-out infinite;
+}
+
+@keyframes session-ambient-pulse-dark {
+  0%, 100% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 4%, var(--bg-hover, transparent));
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 12%, var(--bg-hover, transparent));
+  }
+}
+
+/* Session pulse color variants */
+.session-row-processing--accent  { --session-pulse-color: var(--accent); }
+.session-row-processing--success { --session-pulse-color: var(--success); }
+.session-row-processing--warning { --session-pulse-color: var(--warning); }
+.session-row-processing--error   { --session-pulse-color: var(--error); }
+
 /* ===== Sidebar drag handle ===== */
 .sidebar-resize-handle {
   transition: opacity 0.15s ease;
@@ -565,6 +651,28 @@
   50% { opacity: 0.2; }
 }
 
+/* ===== Typing Dots — subtle fade pulse ===== */
+/* Staggered opacity animation using the same ease-in-out rhythm family. */
+.typing-dot {
+  animation: typing-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes typing-dot-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ===== Status Dot Glow — gentle expanding ring ===== */
+/* Replaces aggressive animate-ping with a calm scale+fade that breathes. */
+.status-dot-glow {
+  animation: status-dot-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes status-dot-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+
 /* ===== Neural Trace — Agent Activity Beam ===== */
 /* A luminous beam that sweeps back and forth along a rail,
    inspired by OpenCode CLI's bouncing progress bar.
@@ -663,4 +771,179 @@
 @keyframes neural-trace-in {
   from { opacity: 0; transform: scaleX(0.8); }
   to { opacity: 1; transform: scaleX(1); }
+}
+
+/* ===== Mobile Drawer ===== */
+/* Backdrop overlay — covers entire screen behind the drawer */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.mobile-drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Drawer panel — slides in from left */
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: 85vw;
+  max-width: 380px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-main);
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Safe area for notched devices */
+  padding-left: env(safe-area-inset-left, 0);
+}
+
+.mobile-drawer.open {
+  transform: translateX(0);
+}
+
+/* ===== Mobile Header Bar ===== */
+.mobile-header {
+  /* Safe area for notched devices (status bar) */
+  padding-top: max(0.625rem, env(safe-area-inset-top, 0.625rem));
+}
+
+/* ===== Touch Targets ===== */
+/* Ensure minimum 44x44px tap target on mobile per WCAG 2.5.8 */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== Mobile Bottom Tab Bar ===== */
+.mobile-bottom-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-main);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  /* Subtle shadow for elevation */
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.mobile-bottom-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+  min-height: 52px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  text-decoration: none;
+}
+
+.mobile-bottom-tab:active {
+  background: var(--bg-tertiary);
+}
+
+.mobile-bottom-tab.active {
+  color: var(--accent);
+}
+
+/* Pad the center content above the fixed bottom tab bar on mobile */
+.mobile-bottom-spacing {
+  padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mobile-drawer {
+    transition-duration: 0.01ms !important;
+  }
+
+  .mobile-drawer-backdrop {
+    transition-duration: 0.01ms !important;
+  }
+
+  .mobile-bottom-tab {
+    transition-duration: 0.01ms !important;
+  }
+
+  .neural-trace__beam,
+  .neural-trace__glow {
+    animation: none !important;
+    opacity: 0.5;
+    left: 30%;
+  }
+
+  .streaming-cursor {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  /* Ambient processing animations — show static accent tint instead */
+  .composer-input.composer-processing {
+    animation: none !important;
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-main)) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  }
+
+  .session-row-processing {
+    animation: none !important;
+    background-color: color-mix(in srgb, var(--session-pulse-color, var(--accent)) 6%, var(--bg-hover, transparent)) !important;
+  }
+}
+
+/* ===== Mobile-specific scrolling fixes ===== */
+@media (max-width: 767px) {
+  /* Prevent overscroll bounce on iOS */
+  html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Always show scrollbar on mobile (no hover needed) */
+  * {
+    scrollbar-color: var(--border-main) transparent;
+  }
+
+  /* Larger touch targets for sidebar items on mobile */
+  .mobile-drawer button {
+    min-height: 44px;
+  }
 }

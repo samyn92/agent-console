@@ -1,19 +1,20 @@
 import type { Component } from "solid-js";
 import { createSignal, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
-import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye } from "solid-icons/fi";
+import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiX } from "solid-icons/fi";
 import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
 import type { PendingQuestion } from "./QuestionPanel";
-import { formatContextForAgent } from "./ContextBar";
+import { formatContextForAgent, getContextLabel, getContextId } from "./ContextBar";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
 import type { SelectedContext } from "../../types/context";
 import { chatWithAgent, replyToQuestion, rejectQuestion, replyToPermission, abortSession, getSessionMessages, ApiError } from "../../lib/api";
 import type { AgentResponse, CapabilityResponse, PendingPermission } from "../../lib/api";
 import { sessionStore } from "../../stores/sessions";
+import { mobileStore } from "../../stores/mobileStore";
 import Markdown, { StreamingMarkdown } from "./Markdown";
-import NeuralTrace from "../NeuralTrace";
+
 import { detectToolCategory, toolThemes, getCategoryIcon, getCategoryLabel } from "../../lib/capability-themes";
 
 interface ChatInterfaceProps {
@@ -23,6 +24,7 @@ interface ChatInterfaceProps {
   sessionId?: string;
   onToolPartsUpdate?: (toolParts: ToolPart[]) => void;
   selectedContexts?: SelectedContext[];
+  onRemoveContext?: (ctx: SelectedContext) => void;
   agent?: AgentResponse;
   capabilities?: CapabilityResponse[];
 }
@@ -43,7 +45,7 @@ const PartContent: Component<{ part: MessagePart }> = (props) => {
       {/* Tool call card */}
       <Match when={props.part.type === "tool"}>
         <div class="flex justify-start">
-          <div class="max-w-[85%]">
+          <div class="max-w-[85%] max-md:max-w-full">
             <ToolCallCard toolPart={(props.part as { type: "tool"; toolPart: ToolPart }).toolPart} />
           </div>
         </div>
@@ -224,7 +226,7 @@ const Message: Component<MessageProps> = (props) => {
     <>
       <Show when={hasToolParts()}>
         <div class="flex justify-start">
-          <div class="max-w-[85%] space-y-2">
+          <div class="max-w-[85%] max-md:max-w-full space-y-2">
             <For each={message().toolParts}>
               {(toolPart) => (
                 <ToolCallCard toolPart={toolPart} />
@@ -440,6 +442,22 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     streamingParts();
     // Don't track currentTextBuffer() here — too noisy (fires per character)
     if (isStreaming()) scrollToBottom("instant");
+  });
+
+  // Mobile: scroll to bottom when virtual keyboard opens so composer stays visible
+  createEffect(() => {
+    if (mobileStore.state.keyboardVisible) {
+      // Small delay to let the viewport resize settle
+      setTimeout(() => {
+        if (messagesEndRef) {
+          isProgrammaticScroll = true;
+          messagesEndRef.scrollIntoView({ behavior: "instant" });
+          requestAnimationFrame(() => {
+            isProgrammaticScroll = false;
+          });
+        }
+      }, 100);
+    }
   });
 
   // Notify parent of tool parts for the inspector
@@ -659,6 +677,20 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     const contextPrefix = formatContextForAgent(props.selectedContexts || []);
     const messageToAgent = contextPrefix ? `${contextPrefix}\n${content}` : content;
 
+    // Build structured context for the backend to resolve and inject
+    const contexts = props.selectedContexts || [];
+    const structuredContext = contexts.length > 0 ? {
+      kubernetes: contexts
+        .filter((c): c is import("../../types/context").K8sResourceContext => c.type === "k8s-resource")
+        .map((c) => ({ kind: c.kind, name: c.name, namespace: c.namespace })),
+      github: contexts
+        .filter((c): c is import("../../types/context").GitHubPathContext => c.type === "github-path")
+        .map((c) => ({ owner: c.owner, repo: c.repo, path: c.path, isFile: c.isFile })),
+      gitlab: contexts
+        .filter((c): c is import("../../types/context").GitLabPathContext => c.type === "gitlab-path")
+        .map((c) => ({ project: c.project, path: c.path, isFile: c.isFile })),
+    } : undefined;
+
     cancelStream = chatWithAgent(
       props.namespace,
       props.name,
@@ -787,7 +819,8 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           sessionStore.refreshAfterChat();
         },
       },
-      props.sessionId || currentSessionId() || undefined
+      props.sessionId || currentSessionId() || undefined,
+      structuredContext
     );
   };
 
@@ -804,6 +837,39 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
         cancelStream = null;
       }
       flushTypewriter();
+
+      // Finalize any accumulated streaming parts into a persistent message
+      // so tool calls and partial text are not lost when the streaming UI unmounts.
+      const finalTextBuffer = rawTextBuffer.trim();
+      const parts = streamingParts();
+      const finalParts: MessagePart[] = [...parts];
+      if (finalTextBuffer) {
+        finalParts.push({ type: "text", content: finalTextBuffer });
+      }
+
+      if (finalParts.length > 0) {
+        const toolParts = finalParts
+          .filter((p): p is MessagePart & { type: "tool" } => p.type === "tool")
+          .map((p) => p.toolPart);
+
+        const allText = finalParts
+          .filter((p): p is MessagePart & { type: "text" } => p.type === "text")
+          .map((p) => p.content)
+          .join("\n\n");
+
+        const assistantMessage: ChatMessage = {
+          id: `msg_aborted_${Date.now()}`,
+          role: "assistant",
+          content: allText,
+          timestamp: new Date(),
+          toolParts,
+          parts: finalParts,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
+
+      setStreamingParts([]);
+      resetTypewriter();
       setIsStreaming(false);
     }
   };
@@ -836,7 +902,7 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       </Show>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} onScroll={handleScroll} class={`flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col ${isLoadingHistory() ? "opacity-0" : "opacity-100"}`}>
+      <div ref={messagesContainerRef} onScroll={handleScroll} class={`flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col ${isLoadingHistory() ? "opacity-0" : "opacity-100"} ${mobileStore.state.isMobile ? "overscroll-contain" : ""}`}>
         <Show
           when={messages().length > 0 || isStreaming()}
           fallback={
@@ -1018,17 +1084,17 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
             {/* Thinking indicator — shown when a tool is running and no text is streaming */}
             <Show when={streamingParts().some(p => p.type === "tool" && p.toolPart.state.status === "running") && !currentTextBuffer()}>
               <div class="flex items-center gap-2 py-1 px-1">
-                <div class="w-3.5 h-3.5 border-[1.5px] border-text-muted/40 border-t-text-muted rounded-full animate-spin" />
+                <div class="w-3.5 h-3.5 border-[1.5px] border-accent/20 border-t-accent/60 rounded-full animate-spin" />
                 <span class="text-xs text-text-muted">Thinking...</span>
               </div>
             </Show>
 
             {/* Initial typing indicator — shown before any text or tool parts arrive */}
             <Show when={!currentTextBuffer() && streamingParts().length === 0}>
-              <div class="flex items-center gap-1 py-2 px-1">
-                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "0ms" }} />
-                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "150ms" }} />
-                <span class="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ "animation-delay": "300ms" }} />
+              <div class="flex items-center gap-1.5 py-2 px-1">
+                <span class="w-1.5 h-1.5 bg-accent/60 rounded-full typing-dot" style={{ "animation-delay": "0ms" }} />
+                <span class="w-1.5 h-1.5 bg-accent/60 rounded-full typing-dot" style={{ "animation-delay": "200ms" }} />
+                <span class="w-1.5 h-1.5 bg-accent/60 rounded-full typing-dot" style={{ "animation-delay": "400ms" }} />
               </div>
             </Show>
           </Show>
@@ -1062,17 +1128,56 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       {/* ===== Composer ===== */}
       <div class="shrink-0 px-4 pb-4 pt-2">
         <div class="relative">
-          {/* Neural trace beam — sits on the top border of the composer when streaming */}
-          <Show when={isStreaming()}>
-            <div class="absolute -top-[1px] left-3 right-3 z-10">
-              <NeuralTrace size="md" color="accent" />
-            </div>
-          </Show>
           <div
-            class={`composer-input rounded-xl border bg-surface transition-all ${
-              isStreaming() ? "border-accent/30" : isFocused() ? "border-accent" : "border-border"
+            class={`composer-input rounded-xl border bg-surface ${
+              isStreaming()
+                ? "composer-processing"
+                : isFocused() ? "border-accent" : "border-border"
             }`}
           >
+          {/* Selected context pills */}
+          <Show when={(props.selectedContexts || []).length > 0}>
+            <div class="flex items-center gap-1.5 px-3 pt-2.5 pb-1 flex-wrap">
+              <For each={props.selectedContexts || []}>
+                {(ctx) => {
+                  const contextType = () => ctx.type;
+                  const pillColor = () => {
+                    switch (contextType()) {
+                      case "k8s-resource": return "bg-blue-500/10 border-blue-500/25 text-blue-400";
+                      case "helm-release": return "bg-cyan-500/10 border-cyan-500/25 text-cyan-400";
+                      case "github-path": return "bg-gray-500/10 border-gray-500/25 text-gray-300";
+                      case "gitlab-path": return "bg-orange-500/10 border-orange-500/25 text-orange-400";
+                      default: return "bg-surface-2 border-border text-text-muted";
+                    }
+                  };
+                  const typeIcon = () => {
+                    switch (contextType()) {
+                      case "k8s-resource": return "K8s";
+                      case "helm-release": return "Helm";
+                      case "github-path": return "GH";
+                      case "gitlab-path": return "GL";
+                      default: return "";
+                    }
+                  };
+                  return (
+                    <span class={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md border text-[11px] font-medium ${pillColor()}`}>
+                      <span class="opacity-60 text-[9px] font-semibold uppercase tracking-wider">{typeIcon()}</span>
+                      <span class="truncate max-w-[140px]">{getContextLabel(ctx)}</span>
+                      <Show when={props.onRemoveContext}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); props.onRemoveContext!(ctx); }}
+                          class="ml-0.5 p-0.5 rounded hover:bg-white/10 transition-colors cursor-pointer"
+                          title="Remove from context"
+                        >
+                          <FiX class="w-2.5 h-2.5" />
+                        </button>
+                      </Show>
+                    </span>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
           <textarea
             ref={textareaRef}
             value={inputValue()}
@@ -1085,11 +1190,12 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
             onBlur={() => setIsFocused(false)}
             placeholder="Message..."
             rows={1}
+            enterkeyhint={mobileStore.state.isMobile ? "send" : undefined}
             class="w-full px-3.5 pt-3 pb-1.5 text-sm leading-5 bg-transparent text-text placeholder-text-muted resize-none focus:outline-none min-h-[36px] max-h-[160px]"
           />
-          <div class="flex items-center justify-between px-3 pb-2.5">
+          <div class={`flex items-center justify-between px-3 pb-2.5 ${mobileStore.state.isMobile ? "pb-[max(0.625rem,env(safe-area-inset-bottom))]" : ""}`}>
             <div class="flex items-center gap-1">
-              <Show when={!isStreaming()}>
+              <Show when={!isStreaming() && !mobileStore.state.isMobile}>
                 <span class="text-xs text-text-muted/50 flex items-center gap-1">
                   <FiCornerDownLeft class="w-2.5 h-2.5" />
                   to send

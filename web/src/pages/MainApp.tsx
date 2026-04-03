@@ -1,17 +1,20 @@
 import { createSignal, createResource, createEffect, Show, For, createMemo, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
-import { FiSettings, FiRefreshCw, FiMessageSquare, FiPlus, FiMoreVertical, FiCpu, FiSidebar, FiZap, FiGitCommit } from "solid-icons/fi";
-import { listAgents, listCapabilities, type AgentResponse } from "../lib/api";
+import { FiSettings, FiRefreshCw, FiMessageSquare, FiPlus, FiMoreVertical, FiCpu, FiSidebar, FiZap, FiGitCommit, FiMenu } from "solid-icons/fi";
+import { listAgents, listCapabilities, listRepos, type AgentResponse } from "../lib/api";
 import type { Session } from "../types/acp";
+import type { SelectedContext } from "../types/context";
 import ChatInterface from "../components/chat/ChatInterface";
 import AgentDetailPanel from "../components/agent/AgentDetailPanel";
 import ChatContextMenu from "../components/chat/ChatContextMenu";
 import WorkflowPanel from "../components/workflow/WorkflowPanel";
-import NeuralTrace from "../components/NeuralTrace";
+
 import ThreePanelLayout from "../components/layout/ThreePanelLayout";
 import { sessionStore } from "../stores/sessions";
 import { panelStore } from "../stores/panelStore";
 import { globalEventsStore } from "../stores/globalEvents";
+import { mobileStore } from "../stores/mobileStore";
+import { getContextId } from "../components/chat/ContextBar";
 
 // =============================================================================
 // SIDEBAR TAB TYPE
@@ -31,6 +34,9 @@ const MainApp = () => {
   // Context menu state
   const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number; sessionId: string } | null>(null);
 
+  // Selected resource contexts (from CapabilityBrowser)
+  const [selectedContexts, setSelectedContexts] = createSignal<SelectedContext[]>([]);
+
   // Start global SSE connection on mount, disconnect on cleanup
   onMount(() => {
     globalEventsStore.connect();
@@ -45,6 +51,9 @@ const MainApp = () => {
     () => activeAgent()?.metadata.namespace,
     (ns) => listCapabilities(ns)
   );
+
+  // Fetch repos for the CapabilityBrowser (GitHub/GitLab browsing)
+  const [repos] = createResource(() => listRepos());
 
   // Auto-select first agent when agents list loads
   createEffect(() => {
@@ -66,6 +75,18 @@ const MainApp = () => {
   const selectAgent = (agent: AgentResponse) => {
     setActiveAgent(agent);
     // Session store will be updated by the createEffect above
+  };
+
+  // Toggle a context item from the CapabilityBrowser
+  const toggleContext = (item: SelectedContext) => {
+    const id = getContextId(item);
+    setSelectedContexts((prev) => {
+      const exists = prev.some((c) => getContextId(c) === id);
+      if (exists) {
+        return prev.filter((c) => getContextId(c) !== id);
+      }
+      return [...prev, item];
+    });
   };
 
   // Format relative time
@@ -157,6 +178,10 @@ const MainApp = () => {
 
   const openChat = (sessionId: string) => {
     sessionStore.openSession(sessionId);
+    // Close drawer on mobile after selecting a chat
+    if (mobileStore.state.isMobile && mobileStore.state.drawerOpen) {
+      mobileStore.closeDrawer();
+    }
   };
 
   const handleContextMenu = (e: MouseEvent, sessionId: string) => {
@@ -194,6 +219,9 @@ const MainApp = () => {
           onSelectAgent={selectAgent}
           capabilities={capabilities() || []}
           loading={agents.loading}
+          selectedContexts={selectedContexts()}
+          onToggleSelect={toggleContext}
+          repos={repos() || []}
         />
       </Show>
 
@@ -304,7 +332,7 @@ const MainApp = () => {
                           if (isPendingPermission()) {
                             return (
                               <span class="relative flex h-2.5 w-2.5">
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+                                <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
                                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-400" />
                               </span>
                             );
@@ -313,7 +341,7 @@ const MainApp = () => {
                           if (isRetrying()) {
                             return (
                               <span class="relative flex h-2.5 w-2.5">
-                                <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
                               </span>
                             );
@@ -321,7 +349,7 @@ const MainApp = () => {
                           if (isBusy()) {
                             return (
                               <span class="relative flex h-2.5 w-2.5">
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                                <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
                               </span>
                             );
@@ -334,6 +362,14 @@ const MainApp = () => {
                             onClick={() => openChat(session.id)}
                             onContextMenu={(e) => handleContextMenu(e, session.id)}
                             class={`relative w-full flex flex-col text-left transition-all duration-150 group border-l-2 ${accentColor()} ${
+                              (isBusy() || isRetrying() || isPendingPermission())
+                                ? `session-row-processing ${
+                                    isPendingPermission() ? "session-row-processing--warning"
+                                    : isRetrying() ? "session-row-processing--warning"
+                                    : "session-row-processing--accent"
+                                  }`
+                                : ""
+                            } ${
                               isActive()
                                 ? "bg-surface-hover ring-1 ring-border"
                                 : "hover:bg-surface-hover"
@@ -377,15 +413,6 @@ const MainApp = () => {
                                 </div>
                               </div>
                             </div>
-                            {/* Neural trace beam — subtle glow on the bottom edge */}
-                            <Show when={isBusy() || isRetrying() || isPendingPermission()}>
-                              <div class="absolute bottom-0 left-2 right-2 z-10">
-                                <NeuralTrace
-                                  size="sm"
-                                  color={isPendingPermission() ? "warning" : isRetrying() ? "warning" : "accent"}
-                                />
-                              </div>
-                            </Show>
                           </button>
                         );
                       }}
@@ -416,15 +443,29 @@ const MainApp = () => {
       {/* --- Footer --- */}
       <footer class="shrink-0 border-t border-border">
         <div class="flex items-center gap-1 px-2 py-1.5">
-          {/* Panel toggle */}
-          <button
-            onClick={panelStore.toggleLeft}
-            class="p-1.5 text-text-muted hover:text-text-secondary rounded transition-colors cursor-pointer"
-            title="Toggle left panel"
-            aria-label="Toggle left panel"
+          {/* Panel toggle (desktop) / Close drawer (mobile) */}
+          <Show
+            when={!mobileStore.state.isMobile}
+            fallback={
+              <button
+                onClick={() => mobileStore.closeDrawer()}
+                class="p-1.5 text-text-muted hover:text-text-secondary rounded transition-colors cursor-pointer"
+                title="Close drawer"
+                aria-label="Close navigation drawer"
+              >
+                <FiSidebar class="w-3.5 h-3.5" />
+              </button>
+            }
           >
-            <FiSidebar class="w-3.5 h-3.5" />
-          </button>
+            <button
+              onClick={panelStore.toggleLeft}
+              class="p-1.5 text-text-muted hover:text-text-secondary rounded transition-colors cursor-pointer"
+              title="Toggle left panel"
+              aria-label="Toggle left panel"
+            >
+              <FiSidebar class="w-3.5 h-3.5" />
+            </button>
+          </Show>
           <div class="flex-1" />
           <A
             href="/settings"
@@ -443,6 +484,41 @@ const MainApp = () => {
   // =========================================================================
   const centerContent = () => (
     <>
+      {/* Mobile header bar — only visible on mobile */}
+      <Show when={mobileStore.state.isMobile}>
+        <header class="mobile-header shrink-0 flex items-center gap-3 px-3 py-2.5 border-b border-border bg-surface">
+          <button
+            onClick={() => mobileStore.openDrawer()}
+            class="p-2 -ml-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
+            aria-label="Open navigation menu"
+          >
+            <FiMenu class="w-5 h-5" />
+          </button>
+          <div class="flex-1 min-w-0">
+            <Show
+              when={sessionStore.state.activeSessionId}
+              fallback={<span class="text-sm font-medium text-text truncate">Chats</span>}
+            >
+              <span class="text-sm font-medium text-text truncate block">
+                {(() => {
+                  const session = sessionStore.visibleSessions().find(
+                    (s) => s.id === sessionStore.state.activeSessionId
+                  );
+                  return formatSessionTitle(session?.title);
+                })()}
+              </span>
+            </Show>
+          </div>
+          <button
+            onClick={startNewChat}
+            class="p-2 -mr-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
+            aria-label="New chat"
+          >
+            <FiPlus class="w-5 h-5" />
+          </button>
+        </header>
+      </Show>
+
       {/* Content */}
       <Show
         when={sessionStore.state.activeSessionId}
@@ -518,7 +594,7 @@ const MainApp = () => {
                                   if (isPendingPermission()) {
                                     return (
                                       <span class="relative flex h-3 w-3 shrink-0">
-                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+                                        <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
                                         <span class="relative inline-flex rounded-full h-3 w-3 bg-yellow-400" />
                                       </span>
                                     );
@@ -527,7 +603,7 @@ const MainApp = () => {
                                   if (isRetrying()) {
                                     return (
                                       <span class="relative flex h-3 w-3 shrink-0">
-                                        <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                        <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                                         <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
                                       </span>
                                     );
@@ -535,7 +611,7 @@ const MainApp = () => {
                                   if (isBusy()) {
                                     return (
                                       <span class="relative flex h-3 w-3 shrink-0">
-                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                                        <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                                         <span class="relative inline-flex rounded-full h-3 w-3 bg-success" />
                                       </span>
                                     );
@@ -547,7 +623,15 @@ const MainApp = () => {
                                   <div
                                     onClick={() => openChat(session.id)}
                                     onContextMenu={(e) => handleContextMenu(e, session.id)}
-                                    class={`relative flex flex-col hover:bg-surface-hover cursor-pointer group transition-colors border-l-2 ${accentColor()}`}
+                                    class={`relative flex flex-col hover:bg-surface-hover cursor-pointer group transition-colors border-l-2 ${accentColor()} ${
+                                      (isBusy() || isRetrying() || isPendingPermission())
+                                        ? `session-row-processing ${
+                                            isPendingPermission() ? "session-row-processing--warning"
+                                            : isRetrying() ? "session-row-processing--warning"
+                                            : "session-row-processing--accent"
+                                          }`
+                                        : ""
+                                    }`}
                                     role="listitem"
                                     tabIndex={0}
                                     aria-label={`Chat: ${formatSessionTitle(session.title)}`}
@@ -588,15 +672,6 @@ const MainApp = () => {
                                         <FiMoreVertical class="w-3 h-3" />
                                       </button>
                                     </div>
-                                    {/* Neural trace beam — subtle glow on the bottom edge */}
-                                    <Show when={isBusy() || isRetrying() || isPendingPermission()}>
-                                      <div class="absolute bottom-0 left-2.5 right-2.5 z-10">
-                                        <NeuralTrace
-                                          size="sm"
-                                          color={isPendingPermission() ? "warning" : isRetrying() ? "warning" : "accent"}
-                                        />
-                                      </div>
-                                    </Show>
                                   </div>
                                 );
                               }}
@@ -639,7 +714,8 @@ const MainApp = () => {
                 name={activeAgent()!.metadata.name}
                 displayName={activeAgent()!.spec.identity?.name || activeAgent()!.metadata.name}
                 sessionId={sessionStore.state.activeSessionId!}
-                selectedContexts={[]}
+                selectedContexts={selectedContexts()}
+                onRemoveContext={toggleContext}
                 agent={activeAgent()!}
                 capabilities={capabilities()}
               />
@@ -659,6 +735,42 @@ const MainApp = () => {
         left={leftPanel()}
         center={centerContent()}
       />
+
+      {/* Mobile bottom tab bar — only visible on mobile, hidden when keyboard is open */}
+      <Show when={mobileStore.state.isMobile && !mobileStore.state.keyboardVisible}>
+        <nav class="mobile-bottom-tabs" aria-label="Mobile navigation">
+          <button
+            onClick={() => {
+              setSidebarTab("chats");
+              mobileStore.openDrawer();
+            }}
+            class={`mobile-bottom-tab ${sidebarTab() === "chats" && mobileStore.state.drawerOpen ? "active" : ""}`}
+            aria-label="Chats"
+          >
+            <FiMessageSquare class="w-5 h-5" />
+            <span>Chats</span>
+          </button>
+          <button
+            onClick={() => {
+              setSidebarTab("workflows");
+              mobileStore.openDrawer();
+            }}
+            class={`mobile-bottom-tab ${sidebarTab() === "workflows" && mobileStore.state.drawerOpen ? "active" : ""}`}
+            aria-label="Workflows"
+          >
+            <FiZap class="w-5 h-5" />
+            <span>Workflows</span>
+          </button>
+          <A
+            href="/settings"
+            class="mobile-bottom-tab"
+            aria-label="Settings"
+          >
+            <FiSettings class="w-5 h-5" />
+            <span>Settings</span>
+          </A>
+        </nav>
+      </Show>
 
       {/* Context Menu (portal-like, rendered above layout) */}
       <Show when={contextMenu()}>
