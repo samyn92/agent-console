@@ -107,6 +107,7 @@ const MainApp = () => {
   const formatSessionTitle = (title: string | undefined) => {
     if (!title) return "Untitled conversation";
     if (title.startsWith("console-user_") || title.startsWith("console-")) return "Untitled conversation";
+    if (title.startsWith("New session")) return "Untitled conversation";
     if (title === "New conversation") return "New conversation";
     return title;
   };

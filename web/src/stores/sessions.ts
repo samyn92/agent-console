@@ -335,6 +335,7 @@ function createSessionStore() {
   const isGenericTitle = (title: string) => {
     if (!title) return true;
     if (title.startsWith("console-user_") || title.startsWith("console-")) return true;
+    if (title.startsWith("New session")) return true;
     if (title === "New conversation") return true;
     return false;
   };
