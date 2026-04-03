@@ -24,6 +24,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  /** Contexts attached when the user sent this message */
+  contexts?: import("./context").SelectedContext[];
   /** New ACP ToolPart format */
   toolParts?: import("./acp").ToolPart[];
   /** Ordered sequence of text and tool parts for interleaved rendering */

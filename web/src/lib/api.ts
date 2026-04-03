@@ -571,8 +571,16 @@ export function chatWithAgent(
       }
 
       case 'session.error': {
-        const error = props.error as Record<string, unknown>;
-        callbacks.onError(error?.message as string || 'Unknown error');
+        const rawError = props.error;
+        let errorMsg = 'Unknown session error';
+        if (typeof rawError === 'string') {
+          errorMsg = rawError;
+        } else if (rawError && typeof rawError === 'object') {
+          const err = rawError as Record<string, unknown>;
+          errorMsg = (err.message as string) || (err.error as string) || JSON.stringify(rawError);
+        }
+        console.error('[session.error]', rawError);
+        callbacks.onError(errorMsg);
         cleanup();
         break;
       }

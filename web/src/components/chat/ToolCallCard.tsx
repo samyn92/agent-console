@@ -44,6 +44,7 @@ import {
   getCategoryIcon,
   getCategoryLabel,
 } from "../../lib/capability-themes";
+import { settingsStore } from "../../stores/settings";
 
 interface ToolCallCardProps {
   /** ACP ToolPart format */
@@ -575,7 +576,7 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
     const part = props.toolPart;
     const state = part.state;
     
-    let status: "running" | "success" | "error" | "pending" | "warning" = "pending";
+    let status: "running" | "success" | "error" | "pending" = "pending";
     let output: string | undefined;
     let error: string | undefined;
     let duration: number | null = null;
@@ -605,42 +606,6 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
     } else if (state?.status === "pending") {
       status = "pending";
       input = state.input;
-    }
-
-    // Detect errors hiding inside "completed" tool outputs.
-    // The backend marks the tool as "completed" if it finished execution,
-    // even if the command itself failed (non-zero exit, STDERR, etc.).
-    if (status === "success" && output) {
-      // 1. Gateway-wrapped output (capability tools): check exit_code & stderr
-      try {
-        const parsed = JSON.parse(output);
-        if (typeof parsed === "object" && parsed !== null && "exit_code" in parsed) {
-          if (parsed.exit_code !== 0) {
-            status = "error";
-            error = parsed.stderr || `Exit code: ${parsed.exit_code}`;
-          } else if (parsed.stderr && parsed.stderr.trim()) {
-            // Non-zero stderr with exit code 0 → warning
-            status = "warning";
-          }
-        }
-      } catch {
-        // Not JSON — check raw output for error patterns
-      }
-
-      // 2. Raw output: detect common error signals
-      if (status === "success") {
-        const lower = output.toLowerCase();
-        const hasStderr = lower.includes("stderr:") && (
-          lower.includes("fatal:") ||
-          lower.includes("error:") ||
-          lower.includes("exit status") ||
-          lower.includes("exit code")
-        );
-        const hasExitFailure = /exit (?:status|code)\s+(?:[1-9]\d*)/i.test(output);
-        if (hasStderr || hasExitFailure) {
-          status = "warning";
-        }
-      }
     }
 
     return {
@@ -673,13 +638,6 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
           color: "border-success/50 bg-success/5",
           label: "Success",
           labelColor: "text-success",
-        };
-      case "warning":
-        return {
-          icon: <FiAlertTriangle class="w-4 h-4" />,
-          color: "border-warning/50 bg-warning/5",
-          label: "Warning",
-          labelColor: "text-warning",
         };
       case "pending":
         return {
@@ -748,14 +706,12 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
 
   const categoryLabel = createMemo(() => getCategoryLabel(category()));
 
-  // Successful tools are collapsed by default — click to expand.
-  // Errors, warnings, running, and todowrite (always useful to see) stay expanded.
+  // Compact mode: only errors stay expanded; everything else collapsed.
+  // Normal mode: everything expanded by default.
   const defaultExpanded = () => {
-    const info = toolInfo();
-    if (info.status === "error" || info.status === "warning") return true;
-    if (info.status === "running" || info.status === "pending") return true;
-    if (info.toolName === "todowrite") return true;
-    return false;
+    if (!settingsStore.compactMode()) return true;
+    // In compact mode, only errors are expanded
+    return toolInfo().status === "error";
   };
   const [expanded, setExpanded] = createSignal(defaultExpanded());
 
@@ -808,103 +764,102 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
         </span>
       </div>
 
-      {/* Collapsible body — collapsed by default for successful tools */}
+      {/* Tool-specific content — collapsed for successful tools */}
       <Show when={expanded()}>
-        {/* Tool-specific content */}
         <div class="px-3 py-2 relative">
           <Switch fallback={
-            <GenericContent 
-              input={toolInfo().input} 
+          <GenericContent 
+            input={toolInfo().input} 
+            output={toolInfo().output} 
+            title={toolInfo().title} 
+            metadata={toolInfo().metadata}
+          />
+        }>
+          {/* Todo List */}
+          <Match when={toolInfo().toolName === "todowrite" && toolInfo().output}>
+            <TodoListContent todos={parseTodoOutput(toolInfo().output!)} />
+          </Match>
+
+          {/* Bash Command */}
+          <Match when={toolInfo().toolName === "bash" && "command" in toolInfo().input}>
+            <BashContent 
+              input={toolInfo().input as unknown as BashInput} 
               output={toolInfo().output} 
-              title={toolInfo().title} 
-              metadata={toolInfo().metadata}
+              error={toolInfo().error}
             />
-          }>
-            {/* Todo List */}
-            <Match when={toolInfo().toolName === "todowrite" && toolInfo().output}>
-              <TodoListContent todos={parseTodoOutput(toolInfo().output!)} />
-            </Match>
+          </Match>
 
-            {/* Bash Command */}
-            <Match when={toolInfo().toolName === "bash" && "command" in toolInfo().input}>
-              <BashContent 
-                input={toolInfo().input as unknown as BashInput} 
-                output={toolInfo().output} 
-                error={toolInfo().error}
-              />
-            </Match>
+          {/* Edit File */}
+          <Match when={toolInfo().toolName === "edit" && "filePath" in toolInfo().input && "oldString" in toolInfo().input}>
+            <EditContent 
+              input={toolInfo().input as unknown as EditInput} 
+              success={toolInfo().status === "success"}
+            />
+          </Match>
 
-            {/* Edit File */}
-            <Match when={toolInfo().toolName === "edit" && "filePath" in toolInfo().input && "oldString" in toolInfo().input}>
-              <EditContent 
-                input={toolInfo().input as unknown as EditInput} 
-                success={toolInfo().status === "success"}
-              />
-            </Match>
+          {/* Read File */}
+          <Match when={toolInfo().toolName === "read" && "filePath" in toolInfo().input}>
+            <ReadContent 
+              input={toolInfo().input as unknown as ReadInput} 
+              output={toolInfo().output}
+            />
+          </Match>
 
-            {/* Read File */}
-            <Match when={toolInfo().toolName === "read" && "filePath" in toolInfo().input}>
-              <ReadContent 
-                input={toolInfo().input as unknown as ReadInput} 
-                output={toolInfo().output}
-              />
-            </Match>
+          {/* Write File */}
+          <Match when={toolInfo().toolName === "write" && "filePath" in toolInfo().input && "content" in toolInfo().input}>
+            <WriteContent input={toolInfo().input as unknown as WriteInput} />
+          </Match>
 
-            {/* Write File */}
-            <Match when={toolInfo().toolName === "write" && "filePath" in toolInfo().input && "content" in toolInfo().input}>
-              <WriteContent input={toolInfo().input as unknown as WriteInput} />
-            </Match>
+          {/* Glob */}
+          <Match when={toolInfo().toolName === "glob" && "pattern" in toolInfo().input}>
+            <GlobContent 
+              input={toolInfo().input as unknown as GlobInput} 
+              output={toolInfo().output}
+            />
+          </Match>
 
-            {/* Glob */}
-            <Match when={toolInfo().toolName === "glob" && "pattern" in toolInfo().input}>
-              <GlobContent 
-                input={toolInfo().input as unknown as GlobInput} 
-                output={toolInfo().output}
-              />
-            </Match>
+          {/* Grep */}
+          <Match when={toolInfo().toolName === "grep" && "pattern" in toolInfo().input}>
+            <GrepContent 
+              input={toolInfo().input as unknown as GrepInput} 
+              output={toolInfo().output}
+            />
+          </Match>
 
-            {/* Grep */}
-            <Match when={toolInfo().toolName === "grep" && "pattern" in toolInfo().input}>
-              <GrepContent 
-                input={toolInfo().input as unknown as GrepInput} 
-                output={toolInfo().output}
-              />
-            </Match>
+          {/* Question */}
+          <Match when={toolInfo().toolName === "question" && "questions" in toolInfo().input}>
+            <QuestionContent 
+              input={toolInfo().input as unknown as QuestionInput}
+              status={toolInfo().status}
+              output={toolInfo().output}
+            />
+          </Match>
+        </Switch>
+      </div>
 
-            {/* Question */}
-            <Match when={toolInfo().toolName === "question" && "questions" in toolInfo().input}>
-              <QuestionContent 
-                input={toolInfo().input as unknown as QuestionInput}
-                status={toolInfo().status}
-                output={toolInfo().output}
-              />
-            </Match>
-          </Switch>
+      {/* Error display for non-bash tools */}
+      <Show when={toolInfo().error && toolInfo().toolName !== "bash"}>
+        <div class="px-3 py-2 border-t border-inherit">
+          <div class="text-xs text-error bg-error/10 rounded px-2 py-1.5">
+            <span class="font-semibold">Error: </span>
+            {toolInfo().error}
+          </div>
         </div>
-
-        {/* Error display for non-bash tools */}
-        <Show when={toolInfo().error && toolInfo().toolName !== "bash"}>
-          <div class="px-3 py-2 border-t border-inherit">
-            <div class="text-xs text-error bg-error/10 rounded px-2 py-1.5">
-              <span class="font-semibold">Error: </span>
-              {toolInfo().error}
-            </div>
-          </div>
-        </Show>
-
-        {/* Trace link */}
-        <Show when={toolInfo().traceId}>
-          <div class="px-3 py-1.5 border-t border-inherit flex items-center justify-end">
-            <a
-              href={`/traces/${toolInfo().traceId}`}
-              class="flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-            >
-              <FiExternalLink class="w-3 h-3" />
-              View Trace
-            </a>
-          </div>
-        </Show>
       </Show>
+
+      {/* Trace link */}
+      <Show when={toolInfo().traceId}>
+        <div class="px-3 py-1.5 border-t border-inherit flex items-center justify-end">
+          <a
+            href={`/traces/${toolInfo().traceId}`}
+            class="flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
+          >
+            <FiExternalLink class="w-3 h-3" />
+            View Trace
+          </a>
+        </div>
+      </Show>
+      </Show>{/* end expanded */}
     </div>
   );
 };

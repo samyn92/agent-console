@@ -14,6 +14,7 @@ import { sessionStore } from "../stores/sessions";
 import { panelStore } from "../stores/panelStore";
 import { globalEventsStore } from "../stores/globalEvents";
 import { mobileStore } from "../stores/mobileStore";
+import { settingsStore } from "../stores/settings";
 import { getContextId } from "../components/chat/ContextBar";
 
 // =============================================================================
@@ -55,10 +56,22 @@ const MainApp = () => {
   // Fetch repos for the CapabilityBrowser (GitHub/GitLab browsing)
   const [repos] = createResource(() => listRepos());
 
-  // Auto-select first agent when agents list loads
+  // Auto-select agent when agents list loads:
+  // Prefer the previously selected agent (persisted in localStorage),
+  // fall back to the first agent in the list.
   createEffect(() => {
     const agentList = agents();
     if (agentList && agentList.length > 0 && !activeAgent()) {
+      const savedKey = settingsStore.selectedAgent();
+      if (savedKey) {
+        const match = agentList.find(
+          (a) => `${a.metadata.namespace}/${a.metadata.name}` === savedKey
+        );
+        if (match) {
+          setActiveAgent(match);
+          return;
+        }
+      }
       setActiveAgent(agentList[0]);
     }
   });
@@ -74,6 +87,7 @@ const MainApp = () => {
   // Select an agent from the sidebar list
   const selectAgent = (agent: AgentResponse) => {
     setActiveAgent(agent);
+    settingsStore.setSelectedAgent(`${agent.metadata.namespace}/${agent.metadata.name}`);
     // Session store will be updated by the createEffect above
   };
 
@@ -107,7 +121,6 @@ const MainApp = () => {
   const formatSessionTitle = (title: string | undefined) => {
     if (!title) return "Untitled conversation";
     if (title.startsWith("console-user_") || title.startsWith("console-")) return "Untitled conversation";
-    if (title.startsWith("New session")) return "Untitled conversation";
     if (title === "New conversation") return "New conversation";
     return title;
   };

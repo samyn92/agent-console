@@ -1,12 +1,13 @@
 import type { Component } from "solid-js";
 import { createSignal, createMemo, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiX, FiTerminal, FiEdit3, FiSearch, FiCheckSquare, FiHelpCircle, FiCode } from "solid-icons/fi";
+import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiTerminal, FiEdit3, FiSearch, FiCheckSquare, FiHelpCircle, FiCode } from "solid-icons/fi";
 import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
 import type { PendingQuestion } from "./QuestionPanel";
-import { formatContextForAgent, getContextLabel } from "./ContextBar";
+import { formatContextForAgent } from "./ContextBar";
+import ContextPill from "./ContextPill";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
 import type { SelectedContext } from "../../types/context";
@@ -307,6 +308,16 @@ const Message: Component<MessageProps> = (props) => {
     return (
       <div class="flex justify-end">
         <div class="max-w-[80%] rounded-lg rounded-br px-4 py-2.5 bg-primary text-primary-foreground">
+          {/* Context pills attached to this message */}
+          <Show when={message().contexts && message().contexts!.length > 0}>
+            <div class="flex items-center gap-1 mb-1.5 flex-wrap">
+              <For each={message().contexts}>
+                {(ctx) => (
+                  <ContextPill ctx={ctx} compact onPrimary />
+                )}
+              </For>
+            </div>
+          </Show>
           <div class="text-sm leading-relaxed whitespace-pre-wrap">
             {message().content}
           </div>
@@ -803,6 +814,9 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       role: "user",
       content,
       timestamp: new Date(),
+      contexts: (props.selectedContexts || []).length > 0
+        ? [...props.selectedContexts!]
+        : undefined,
     };
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
@@ -926,6 +940,35 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           setCurrentSessionId(sessionId);
         },
         onError: (errorMsg) => {
+          flushTypewriter();
+
+          // Preserve any partial content that was already streamed
+          const finalTextBuffer = rawTextBuffer.trim();
+          const parts = streamingParts();
+          const finalParts: MessagePart[] = [...parts];
+          if (finalTextBuffer) {
+            finalParts.push({ type: "text", content: finalTextBuffer });
+          }
+          if (finalParts.length > 0) {
+            const toolParts = finalParts
+              .filter((p): p is MessagePart & { type: "tool" } => p.type === "tool")
+              .map((p) => p.toolPart);
+            const allText = finalParts
+              .filter((p): p is MessagePart & { type: "text" } => p.type === "text")
+              .map((p) => p.content)
+              .join("\n\n");
+            const assistantMessage: ChatMessage = {
+              id: `msg_error_${Date.now()}`,
+              role: "assistant",
+              content: allText,
+              timestamp: new Date(),
+              toolParts,
+              parts: finalParts,
+            };
+            setMessages((prev) => [...prev, assistantMessage]);
+          }
+
+          setStreamingParts([]);
           resetTypewriter();
           setError(errorMsg);
           setIsStreaming(false);
@@ -986,14 +1029,12 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     );
   };
 
-  const stopStreaming = async () => {
+  const stopStreaming = () => {
     const sessionId = currentSessionId();
     if (sessionId && isStreaming()) {
-      try {
-        await abortSession(props.namespace, props.name, sessionId);
-      } catch (err) {
-        console.error("Failed to abort session:", err);
-      }
+      // Cancel the stream FIRST to unsubscribe from the SSE event bus.
+      // This prevents onDone/onError callbacks from firing (due to server-sent
+      // session.idle/session.error events) while we finalize the UI state.
       if (cancelStream) {
         cancelStream();
         cancelStream = null;
@@ -1033,6 +1074,12 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       setStreamingParts([]);
       resetTypewriter();
       setIsStreaming(false);
+
+      // Tell the backend to stop processing (fire-and-forget — the stream
+      // is already unsubscribed so we won't receive any further events).
+      abortSession(props.namespace, props.name, sessionId).catch((err) => {
+        console.error("Failed to abort session:", err);
+      });
 
       // If the user aborted a draft chat mid-stream, finalize it so they
       // can continue chatting with the now-real session
@@ -1301,42 +1348,12 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           <Show when={(props.selectedContexts || []).length > 0}>
             <div class="flex items-center gap-1.5 px-3 pt-2.5 pb-1 flex-wrap">
               <For each={props.selectedContexts || []}>
-                {(ctx) => {
-                  const contextType = () => ctx.type;
-                  const pillColor = () => {
-                    switch (contextType()) {
-                      case "k8s-resource": return "bg-blue-500/10 border-blue-500/25 text-blue-400";
-                      case "helm-release": return "bg-cyan-500/10 border-cyan-500/25 text-cyan-400";
-                      case "github-path": return "bg-gray-500/10 border-gray-500/25 text-gray-300";
-                      case "gitlab-path": return "bg-orange-500/10 border-orange-500/25 text-orange-400";
-                      default: return "bg-surface-2 border-border text-text-muted";
-                    }
-                  };
-                  const typeIcon = () => {
-                    switch (contextType()) {
-                      case "k8s-resource": return "K8s";
-                      case "helm-release": return "Helm";
-                      case "github-path": return "GH";
-                      case "gitlab-path": return "GL";
-                      default: return "";
-                    }
-                  };
-                  return (
-                    <span class={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md border text-[11px] font-medium ${pillColor()}`}>
-                      <span class="opacity-60 text-[9px] font-semibold uppercase tracking-wider">{typeIcon()}</span>
-                      <span class="truncate max-w-[140px]">{getContextLabel(ctx)}</span>
-                      <Show when={props.onRemoveContext}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); props.onRemoveContext!(ctx); }}
-                          class="ml-0.5 p-0.5 rounded hover:bg-white/10 transition-colors cursor-pointer"
-                          title="Remove from context"
-                        >
-                          <FiX class="w-2.5 h-2.5" />
-                        </button>
-                      </Show>
-                    </span>
-                  );
-                }}
+                {(ctx) => (
+                  <ContextPill
+                    ctx={ctx}
+                    onRemove={props.onRemoveContext ? (c) => props.onRemoveContext!(c) : undefined}
+                  />
+                )}
               </For>
             </div>
           </Show>

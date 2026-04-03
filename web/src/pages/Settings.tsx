@@ -5,6 +5,7 @@ import {
   FiCheck, FiTrash2, FiInfo
 } from "solid-icons/fi";
 import { themeStore } from "../stores/theme";
+import { settingsStore } from "../stores/settings";
 import { DEFAULT_SEED_COLOR } from "../lib/material-theme";
 
 // Settings store (in a real app, this would persist to localStorage or API)
@@ -12,7 +13,6 @@ const [settings, setSettings] = createSignal({
   defaultNamespace: "",
   refreshInterval: 30,
   showSystemPrompts: true,
-  compactMode: false,
 });
 
 // Section component
@@ -353,9 +353,9 @@ const SettingsPage: Component = () => {
         <div class="mt-4 pt-4 border-t border-border">
           <Toggle
             label="Compact Mode"
-            description="Show more items with reduced spacing"
-            checked={settings().compactMode}
-            onChange={(v) => setSettings({ ...settings(), compactMode: v })}
+            description="Collapse tool cards by default; only errors stay expanded"
+            checked={settingsStore.compactMode()}
+            onChange={(v) => settingsStore.setCompactMode(v)}
           />
         </div>
       </SettingsSection>
