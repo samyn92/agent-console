@@ -1,12 +1,12 @@
 import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
 import {
-  FiCpu, FiChevronDown, FiChevronRight, FiTool, FiBookOpen,
+  FiCpu, FiChevronDown, FiChevronRight, FiTool,
   FiTerminal, FiFileText, FiEdit, FiSearch, FiGlobe, FiUsers,
-  FiEye, FiFile, FiCheck, FiX, FiAlertTriangle, FiClock, FiShield,
+  FiEye, FiFile, FiCheck, FiX,
 } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
-import { getContextId, getContextLabel } from "../chat/ContextBar";
+import { getContextLabel } from "../chat/ContextBar";
 import {
   detectToolCategory,
   toolThemes,
@@ -411,7 +411,6 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
           <div class="border-t border-border">
             <For each={detectedCapabilities()}>
               {(info) => {
-                const accent = () => accentMap[info.type];
                 const isExpanded = () => expandedCapability() === info.type;
 
                 return (

@@ -5,7 +5,7 @@ import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
 import type { PendingQuestion } from "./QuestionPanel";
-import { formatContextForAgent, getContextLabel, getContextId } from "./ContextBar";
+import { formatContextForAgent, getContextLabel } from "./ContextBar";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
 import type { SelectedContext } from "../../types/context";
