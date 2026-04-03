@@ -20,8 +20,8 @@ interface SessionState {
   activeSessionId: string | null;
   /** Open tabs - sessions pinned in the tab bar */
   openTabs: SessionTab[];
-  /** Hidden session IDs (user chose to hide from recent list) */
-  hiddenSessionIds: string[];
+  /** Pinned session IDs (user chose to pin to top of recent list) */
+  pinnedSessionIds: string[];
   /** Session IDs that are currently busy (agent is processing) */
   busySessionIds: string[];
   /** Session IDs with unseen activity (updated while not active) */
@@ -32,6 +32,8 @@ interface SessionState {
   errorSessionIds: string[];
   /** Session IDs waiting for user permission approval */
   pendingPermissionIds: string[];
+  /** Whether we are in a "draft" new chat (no backend session yet) */
+  isDraftChat: boolean;
   /** Loading state */
   loading: boolean;
   /** Error message */
@@ -47,12 +49,13 @@ function createSessionStore() {
     sessions: [],
     activeSessionId: null,
     openTabs: [],
-    hiddenSessionIds: [],
+    pinnedSessionIds: [],
     busySessionIds: [],
     unseenSessionIds: [],
     retrySessionIds: {},
     errorSessionIds: [],
     pendingPermissionIds: [],
+    isDraftChat: false,
     loading: false,
     error: null,
   });
@@ -66,6 +69,14 @@ function createSessionStore() {
     return ref ? `${ref.namespace}/${ref.name}` : null;
   };
 
+  // Monotonically increasing mount generation counter. Increments when the user
+  // intentionally navigates to a different chat (openSession, startNewChat,
+  // switchTab, goToRecent) but NOT when a draft materializes into a real session.
+  // Used as the <Show keyed> key in MainApp to prevent remounting ChatInterface
+  // during the draft → real transition.
+  const [chatMountId, setChatMountId] = createSignal(0);
+  const bumpMountId = () => setChatMountId((n) => n + 1);
+
   // Track sessions that have had at least one message sent (not empty)
   const usedSessions = new Set<string>();
 
@@ -75,24 +86,24 @@ function createSessionStore() {
 
   // ---- Per-agent scoped localStorage helpers ----
 
-  // Load hidden sessions from localStorage (scoped to current agent)
-  const loadHidden = () => {
+  // Load pinned sessions from localStorage (scoped to current agent)
+  const loadPinned = () => {
     const key = agentKey();
     if (!key) return;
     try {
-      const stored = localStorage.getItem(`agent-console-hidden:${key}`);
-      setState("hiddenSessionIds", stored ? JSON.parse(stored) : []);
+      const stored = localStorage.getItem(`agent-console-pinned:${key}`);
+      setState("pinnedSessionIds", stored ? JSON.parse(stored) : []);
     } catch {
-      setState("hiddenSessionIds", []);
+      setState("pinnedSessionIds", []);
     }
   };
 
-  // Persist hidden sessions (scoped to current agent)
-  const saveHidden = () => {
+  // Persist pinned sessions (scoped to current agent)
+  const savePinned = () => {
     const key = agentKey();
     if (!key) return;
     try {
-      localStorage.setItem(`agent-console-hidden:${key}`, JSON.stringify(state.hiddenSessionIds));
+      localStorage.setItem(`agent-console-pinned:${key}`, JSON.stringify(state.pinnedSessionIds));
     } catch {
       // ignore
     }
@@ -129,7 +140,9 @@ function createSessionStore() {
       const stored = localStorage.getItem(`agent-console-tabs:${key}`);
       if (stored) {
         const data = JSON.parse(stored) as { openTabs: SessionTab[]; activeSessionId: string | null };
-        setState("openTabs", data.openTabs || []);
+        // Filter out any persisted draft tabs (drafts are transient)
+        const tabs = (data.openTabs || []).filter((t: SessionTab) => t.sessionId !== "__draft__");
+        setState("openTabs", tabs);
         setState("activeSessionId", data.activeSessionId ?? null);
       } else {
         setState("openTabs", []);
@@ -146,8 +159,10 @@ function createSessionStore() {
     const key = agentKey();
     if (!key) return;
     try {
+      // Don't persist draft tabs — they are transient
+      const persistableTabs = state.openTabs.filter((t) => t.sessionId !== "__draft__");
       localStorage.setItem(`agent-console-tabs:${key}`, JSON.stringify({
-        openTabs: state.openTabs,
+        openTabs: persistableTabs,
         activeSessionId: state.activeSessionId,
       }));
     } catch {
@@ -337,7 +352,7 @@ function createSessionStore() {
     // 1. Save current agent's state before switching
     if (current) {
       saveTabs();
-      saveHidden();
+      savePinned();
       saveUnseen();
     }
 
@@ -352,14 +367,16 @@ function createSessionStore() {
     setState("activeSessionId", null);
     setState("busySessionIds", []);
     setState("unseenSessionIds", []);
-    setState("hiddenSessionIds", []);
+    setState("pinnedSessionIds", []);
     setState("retrySessionIds", {});
     setState("errorSessionIds", []);
     setState("pendingPermissionIds", []);
+    setState("isDraftChat", false);
+    bumpMountId();
 
-    // 4. Restore the new agent's persisted state (tabs, active session, hidden, unseen)
+    // 4. Restore the new agent's persisted state (tabs, active session, pinned, unseen)
     loadTabs();
-    loadHidden();
+    loadPinned();
     loadUnseen();
 
     // 5. Register with global events store to receive events for this agent
@@ -423,7 +440,14 @@ function createSessionStore() {
 
   /** Open a session (set as active and add to tabs) */
   const openSession = (sessionId: string) => {
+    // If we were in draft mode, close the draft tab
+    if (state.isDraftChat) {
+      setState("openTabs", state.openTabs.filter((t) => t.sessionId !== "__draft__"));
+      setState("isDraftChat", false);
+    }
+
     setState("activeSessionId", sessionId);
+    bumpMountId();
 
     // Mark as seen
     if (state.unseenSessionIds.includes(sessionId)) {
@@ -448,12 +472,41 @@ function createSessionStore() {
     }
   };
 
-  /** Start a new chat - creates session on backend and opens it */
+  /** Start a new chat - enters draft mode (no backend session yet).
+   *  The actual backend session is created when the first message is sent. */
   const startNewChat = async (): Promise<string | null> => {
     const ref = agentRef();
     if (!ref) return null;
 
-    // Capture the agent key at call time to detect if agent changed during await
+    // If already in draft mode, just focus it
+    if (state.isDraftChat) return null;
+
+    // Enter draft mode: show the chat interface with no session ID
+    setState("isDraftChat", true);
+    setState("activeSessionId", null);
+    bumpMountId();
+
+    // Add a draft tab
+    const tab: SessionTab = {
+      sessionId: "__draft__",
+      title: "New chat",
+    };
+    setState("openTabs", [...state.openTabs, tab]);
+    saveTabs();
+
+    return null;
+  };
+
+  /** Materialize a draft chat: create the real session on the backend.
+   *  Called when the user sends their first message. Returns the new session ID.
+   *  
+   *  IMPORTANT: This does NOT immediately update activeSessionId/isDraftChat 
+   *  to avoid changing the <Show keyed> key and remounting ChatInterface mid-stream.
+   *  Call finalizeDraftSession() after the chat stream completes. */
+  const materializeDraftSession = async (): Promise<string | null> => {
+    const ref = agentRef();
+    if (!ref) return null;
+
     const callerKey = `${ref.namespace}/${ref.name}`;
 
     try {
@@ -461,22 +514,10 @@ function createSessionStore() {
       const newSessionId = result.id;
 
       // If the agent changed while we were awaiting, discard the result
-      const currentKey = agentKey();
-      if (currentKey !== callerKey) {
-        return null;
-      }
+      if (agentKey() !== callerKey) return null;
 
-      // Add to tabs and activate
-      const tab: SessionTab = {
-        sessionId: newSessionId,
-        title: "New chat",
-      };
-      setState("openTabs", [...state.openTabs, tab]);
-      setState("activeSessionId", newSessionId);
-      saveTabs();
-
-      // Refresh session list
-      await fetchSessions();
+      // Mark as used immediately since the user is sending a message
+      usedSessions.add(newSessionId);
 
       return newSessionId;
     } catch (err) {
@@ -485,9 +526,39 @@ function createSessionStore() {
     }
   };
 
+  /** Finalize a draft chat after the first message stream completes.
+   *  Transitions the store from draft mode to a real session. */
+  const finalizeDraftSession = (realSessionId: string) => {
+    if (!state.isDraftChat) return;
+
+    // Replace the draft tab with the real session
+    setState("openTabs", state.openTabs.map((t) =>
+      t.sessionId === "__draft__" ? { ...t, sessionId: realSessionId } : t
+    ));
+    setState("activeSessionId", realSessionId);
+    setState("isDraftChat", false);
+    saveTabs();
+
+    // Refresh session list to pick up the new session
+    fetchSessions();
+  };
+
   /** Close a tab. If the session was never used (no messages sent) and hasn't
    *  already been deleted, delete it from the backend. */
   const closeTab = (sessionId: string) => {
+    // If closing the draft tab, just clear draft state
+    if (sessionId === "__draft__") {
+      setState("openTabs", state.openTabs.filter((t) => t.sessionId !== "__draft__"));
+      setState("isDraftChat", false);
+      if (state.activeSessionId === null && state.isDraftChat) {
+        // Was viewing draft, go to last remaining tab or recent view
+        const remaining = state.openTabs.filter((t) => t.sessionId !== "__draft__");
+        setState("activeSessionId", remaining.length > 0 ? remaining[remaining.length - 1].sessionId : null);
+      }
+      saveTabs();
+      return;
+    }
+
     const wasUnused = !usedSessions.has(sessionId);
     const alreadyDeleted = deletedSessions.has(sessionId);
 
@@ -521,7 +592,15 @@ function createSessionStore() {
 
   /** Switch to a specific tab */
   const switchTab = (sessionId: string) => {
+    if (sessionId === "__draft__") {
+      setState("activeSessionId", null);
+      setState("isDraftChat", true);
+      bumpMountId();
+      return;
+    }
     setState("activeSessionId", sessionId);
+    setState("isDraftChat", false);
+    bumpMountId();
     // Mark as seen
     if (state.unseenSessionIds.includes(sessionId)) {
       setState("unseenSessionIds", (ids) => ids.filter((id) => id !== sessionId));
@@ -531,7 +610,14 @@ function createSessionStore() {
 
   /** Go back to the recent chats view (no active session) */
   const goToRecent = () => {
+    // If in draft mode, close the draft tab
+    if (state.isDraftChat) {
+      setState("openTabs", state.openTabs.filter((t) => t.sessionId !== "__draft__"));
+      setState("isDraftChat", false);
+      saveTabs();
+    }
     setState("activeSessionId", null);
+    bumpMountId();
   };
 
   /** Delete a session */
@@ -557,21 +643,27 @@ function createSessionStore() {
       // Remove from tabs if open
       closeTab(sessionId);
 
-      // Remove from hidden
-      setState("hiddenSessionIds", state.hiddenSessionIds.filter((id) => id !== sessionId));
-      saveHidden();
+      // Remove from pinned
+      setState("pinnedSessionIds", state.pinnedSessionIds.filter((id) => id !== sessionId));
+      savePinned();
     } catch (err) {
       setState("error", err instanceof Error ? err.message : "Failed to delete session");
     }
   };
 
-  /** Hide a session from the recent list (does not delete) */
-  const hideSession = (sessionId: string) => {
-    if (!state.hiddenSessionIds.includes(sessionId)) {
-      setState("hiddenSessionIds", [...state.hiddenSessionIds, sessionId]);
-      saveHidden();
+  /** Toggle pin state for a session */
+  const togglePinSession = (sessionId: string) => {
+    if (state.pinnedSessionIds.includes(sessionId)) {
+      setState("pinnedSessionIds", state.pinnedSessionIds.filter((id) => id !== sessionId));
+    } else {
+      setState("pinnedSessionIds", [...state.pinnedSessionIds, sessionId]);
     }
+    savePinned();
   };
+
+  /** Check if a session is pinned */
+  const isSessionPinned = (sessionId: string) =>
+    state.pinnedSessionIds.includes(sessionId);
 
   /** Update a tab's title (e.g., when session.updated event arrives) */
   const updateTabTitle = (sessionId: string, title: string) => {
@@ -601,13 +693,13 @@ function createSessionStore() {
     }
   };
 
-  /** Get visible sessions (not hidden, and filter out empty unused sessions) */
+  /** Get visible sessions (filter out empty unused sessions) */
   const visibleSessions = () =>
     state.sessions.filter((s) => {
-      // Never show hidden sessions
-      if (state.hiddenSessionIds.includes(s.id)) return false;
       // Always show sessions that are open as tabs
       if (state.openTabs.some((t) => t.sessionId === s.id)) return true;
+      // Always show pinned sessions
+      if (state.pinnedSessionIds.includes(s.id)) return true;
       // Filter out sessions that look empty/unused:
       // - created == updated means nothing happened after creation
       // - no summary data (no file changes)
@@ -662,22 +754,26 @@ function createSessionStore() {
   return {
     state,
     // Getters
+    chatMountId,
     visibleSessions,
     isSessionBusy,
     isSessionUnseen,
     getSessionRetryAttempt,
     isSessionError,
     isSessionPendingPermission,
+    isSessionPinned,
     // Actions
     setAgent,
     fetchSessions,
     openSession,
     startNewChat,
+    materializeDraftSession,
+    finalizeDraftSession,
     closeTab,
     switchTab,
     goToRecent,
     removeSession,
-    hideSession,
+    togglePinSession,
     updateTabTitle,
     markSessionUsed,
     refreshAfterChat,

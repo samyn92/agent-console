@@ -6,6 +6,7 @@ import NeuralTrace from "../NeuralTrace";
 interface ChatTabBarProps {
   tabs: SessionTab[];
   activeSessionId: string | null;
+  isDraftChat?: boolean;
   busySessionIds?: string[];
   onSwitchTab: (sessionId: string) => void;
   onCloseTab: (sessionId: string) => void;
@@ -53,7 +54,7 @@ const ChatTabBar: Component<ChatTabBarProps> = (props) => {
     }
   };
 
-  const isOnRecent = () => !props.activeSessionId;
+  const isOnRecent = () => !props.activeSessionId && !props.isDraftChat;
 
   return (
     <div class="flex items-stretch bg-surface border-b border-border h-[40px] shrink-0 cursor-default">
@@ -78,7 +79,10 @@ const ChatTabBar: Component<ChatTabBarProps> = (props) => {
         {/* Open session tabs */}
         <For each={props.tabs}>
           {(tab) => {
-            const isActive = () => props.activeSessionId === tab.sessionId;
+            const isActive = () => {
+              if (tab.sessionId === "__draft__") return !!props.isDraftChat;
+              return props.activeSessionId === tab.sessionId;
+            };
             const isBusy = () => props.busySessionIds?.includes(tab.sessionId) ?? false;
             return (
               <button

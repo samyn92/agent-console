@@ -1,6 +1,6 @@
 import { createSignal, createResource, createEffect, Show, For, createMemo, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
-import { FiSettings, FiRefreshCw, FiMessageSquare, FiPlus, FiMoreVertical, FiCpu, FiSidebar, FiZap, FiGitCommit, FiMenu } from "solid-icons/fi";
+import { FiSettings, FiRefreshCw, FiMessageSquare, FiPlus, FiMoreVertical, FiCpu, FiSidebar, FiZap, FiGitCommit, FiMenu, FiMapPin } from "solid-icons/fi";
 import { listAgents, listCapabilities, listRepos, type AgentResponse } from "../lib/api";
 import type { Session } from "../types/acp";
 import type { SelectedContext } from "../types/context";
@@ -114,8 +114,12 @@ const MainApp = () => {
   // Time-based grouping for chat list
   type TimeGroup = { label: string; sessions: Session[] };
   const groupedSessions = createMemo((): TimeGroup[] => {
-    const sessions = sessionStore.visibleSessions().slice(0, 30);
-    if (sessions.length === 0) return [];
+    const allSessions = sessionStore.visibleSessions().slice(0, 30);
+    if (allSessions.length === 0) return [];
+
+    // Separate pinned sessions
+    const pinned = allSessions.filter((s) => sessionStore.isSessionPinned(s.id));
+    const unpinned = allSessions.filter((s) => !sessionStore.isSessionPinned(s.id));
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
@@ -123,13 +127,14 @@ const MainApp = () => {
     const weekStart = todayStart - 6 * 86400;
 
     const groups: Record<string, Session[]> = {
+      Pinned: pinned,
       Today: [],
       Yesterday: [],
       "This Week": [],
       Older: [],
     };
 
-    for (const s of sessions) {
+    for (const s of unpinned) {
       const t = s.time?.updated || s.time?.created || 0;
       if (t >= todayStart) groups["Today"].push(s);
       else if (t >= yesterdayStart) groups["Yesterday"].push(s);
@@ -137,15 +142,19 @@ const MainApp = () => {
       else groups["Older"].push(s);
     }
 
-    return (["Today", "Yesterday", "This Week", "Older"] as const)
+    return (["Pinned", "Today", "Yesterday", "This Week", "Older"] as const)
       .filter((label) => groups[label].length > 0)
       .map((label) => ({ label, sessions: groups[label] }));
   });
 
   // Same grouping but for center panel (no limit)
   const groupedAllSessions = createMemo((): TimeGroup[] => {
-    const sessions = sessionStore.visibleSessions();
-    if (sessions.length === 0) return [];
+    const allSessions = sessionStore.visibleSessions();
+    if (allSessions.length === 0) return [];
+
+    // Separate pinned sessions
+    const pinned = allSessions.filter((s) => sessionStore.isSessionPinned(s.id));
+    const unpinned = allSessions.filter((s) => !sessionStore.isSessionPinned(s.id));
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
@@ -153,13 +162,14 @@ const MainApp = () => {
     const weekStart = todayStart - 6 * 86400;
 
     const groups: Record<string, Session[]> = {
+      Pinned: pinned,
       Today: [],
       Yesterday: [],
       "This Week": [],
       Older: [],
     };
 
-    for (const s of sessions) {
+    for (const s of unpinned) {
       const t = s.time?.updated || s.time?.created || 0;
       if (t >= todayStart) groups["Today"].push(s);
       else if (t >= yesterdayStart) groups["Yesterday"].push(s);
@@ -167,7 +177,7 @@ const MainApp = () => {
       else groups["Older"].push(s);
     }
 
-    return (["Today", "Yesterday", "This Week", "Older"] as const)
+    return (["Pinned", "Today", "Yesterday", "This Week", "Older"] as const)
       .filter((label) => groups[label].length > 0)
       .map((label) => ({ label, sessions: groups[label] }));
   });
@@ -300,12 +310,13 @@ const MainApp = () => {
                       </div>
                       <For each={group.sessions}>
                         {(session) => {
-                          const isActive = () => sessionStore.state.activeSessionId === session.id;
+                           const isActive = () => sessionStore.state.activeSessionId === session.id;
                           const isBusy = () => sessionStore.isSessionBusy(session.id);
                           const isUnseen = () => sessionStore.isSessionUnseen(session.id);
                           const isRetrying = () => sessionStore.getSessionRetryAttempt(session.id) > 0;
                           const isError = () => sessionStore.isSessionError(session.id);
                           const isPendingPermission = () => sessionStore.isSessionPendingPermission(session.id);
+                          const isPinned = () => sessionStore.isSessionPinned(session.id);
                           const summary = () => session.summary;
 
                         // Determine left accent color
@@ -353,6 +364,9 @@ const MainApp = () => {
                                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
                               </span>
                             );
+                          }
+                          if (isPinned()) {
+                            return <FiMapPin class={`w-3.5 h-3.5 ${isActive() ? "text-accent" : "text-accent/60"}`} />;
                           }
                           return <FiMessageSquare class={`w-3.5 h-3.5 ${isActive() ? "text-text-secondary" : "text-text-muted"}`} />;
                         };
@@ -496,11 +510,12 @@ const MainApp = () => {
           </button>
           <div class="flex-1 min-w-0">
             <Show
-              when={sessionStore.state.activeSessionId}
+              when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
               fallback={<span class="text-sm font-medium text-text truncate">Chats</span>}
             >
               <span class="text-sm font-medium text-text truncate block">
                 {(() => {
+                  if (sessionStore.state.isDraftChat) return "New chat";
                   const session = sessionStore.visibleSessions().find(
                     (s) => s.id === sessionStore.state.activeSessionId
                   );
@@ -521,7 +536,7 @@ const MainApp = () => {
 
       {/* Content */}
       <Show
-        when={sessionStore.state.activeSessionId}
+        when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
         fallback={
           /* ===== Recent Chats View ===== */
           <div class="flex-1 overflow-y-auto">
@@ -697,23 +712,26 @@ const MainApp = () => {
             </div>
           }
         >
-          {/* Composite key: agent identity + session ID.
-              SolidJS <Show keyed> only remounts when the key value changes.
-              Without the agent in the key, switching agents that share a session ID
-              (or that restore the same activeSessionId from localStorage) would NOT
-              remount ChatInterface, leaving the old agent's messages on screen. */}
+          {/* Mount key: agent identity + chatMountId. The mount ID is a
+              monotonically increasing counter that bumps on intentional navigation
+              (openSession, startNewChat, switchTab, goToRecent) but NOT when a
+              draft materializes into a real session via finalizeDraftSession.
+              This prevents SolidJS from remounting ChatInterface mid-conversation
+              when the session ID changes from __draft__ to a real ID. */}
           <Show when={(() => {
             const agent = activeAgent();
             const sid = sessionStore.state.activeSessionId;
-            if (!agent || !sid) return null;
-            return `${agent.metadata.namespace}/${agent.metadata.name}/${sid}`;
+            const isDraft = sessionStore.state.isDraftChat;
+            if (!agent || (!sid && !isDraft)) return null;
+            return `${agent.metadata.namespace}/${agent.metadata.name}/${sessionStore.chatMountId()}`;
           })()} keyed>
             {(_key) => (
               <ChatInterface
                 namespace={activeAgent()!.metadata.namespace}
                 name={activeAgent()!.metadata.name}
                 displayName={activeAgent()!.spec.identity?.name || activeAgent()!.metadata.name}
-                sessionId={sessionStore.state.activeSessionId!}
+                sessionId={sessionStore.state.activeSessionId || undefined}
+                isDraft={!sessionStore.state.activeSessionId && sessionStore.state.isDraftChat}
                 selectedContexts={selectedContexts()}
                 onRemoveContext={toggleContext}
                 agent={activeAgent()!}
@@ -744,8 +762,9 @@ const MainApp = () => {
           x={contextMenu()!.x}
           y={contextMenu()!.y}
           sessionId={contextMenu()!.sessionId}
+          isPinned={sessionStore.isSessionPinned(contextMenu()!.sessionId)}
           onDelete={(id) => sessionStore.removeSession(id)}
-          onHide={(id) => sessionStore.hideSession(id)}
+          onTogglePin={(id) => sessionStore.togglePinSession(id)}
           onClose={() => setContextMenu(null)}
         />
       </Show>

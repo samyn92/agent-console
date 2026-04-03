@@ -1,13 +1,14 @@
 import type { Component } from "solid-js";
 import { onCleanup } from "solid-js";
-import { FiTrash2, FiEyeOff } from "solid-icons/fi";
+import { FiTrash2, FiMapPin } from "solid-icons/fi";
 
 interface ChatContextMenuProps {
   x: number;
   y: number;
   sessionId: string;
+  isPinned: boolean;
   onDelete: (sessionId: string) => void;
-  onHide: (sessionId: string) => void;
+  onTogglePin: (sessionId: string) => void;
   onClose: () => void;
 }
 
@@ -57,13 +58,13 @@ const ChatContextMenu: Component<ChatContextMenuProps> = (props) => {
     >
       <button
         onClick={() => {
-          props.onHide(props.sessionId);
+          props.onTogglePin(props.sessionId);
           props.onClose();
         }}
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-text-secondary hover:text-text hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-text-secondary hover:text-text hover:bg-surface-hover transition-colors cursor-pointer"
       >
-        <FiEyeOff class="w-3.5 h-3.5" />
-        <span>Hide from list</span>
+        <FiMapPin class={`w-3.5 h-3.5 ${props.isPinned ? "text-accent" : ""}`} />
+        <span>{props.isPinned ? "Unpin from top" : "Pin to top"}</span>
       </button>
       <div class="border-t border-border my-1" />
       <button
@@ -71,7 +72,7 @@ const ChatContextMenu: Component<ChatContextMenuProps> = (props) => {
           props.onDelete(props.sessionId);
           props.onClose();
         }}
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-error/80 hover:text-error hover:bg-error/5 transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-error/80 hover:text-error hover:bg-error/5 transition-colors cursor-pointer"
       >
         <FiTrash2 class="w-3.5 h-3.5" />
         <span>Delete conversation</span>

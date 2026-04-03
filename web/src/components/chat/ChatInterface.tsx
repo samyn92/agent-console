@@ -22,6 +22,7 @@ interface ChatInterfaceProps {
   name: string;
   displayName: string;
   sessionId?: string;
+  isDraft?: boolean;
   onToolPartsUpdate?: (toolParts: ToolPart[]) => void;
   selectedContexts?: SelectedContext[];
   onRemoveContext?: (ctx: SelectedContext) => void;
@@ -255,7 +256,7 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   const [currentTextBuffer, setCurrentTextBuffer] = createSignal("");
   // Hide the message container until we've scrolled to the bottom after loading
   // history, so the user never sees the scroll-from-top animation.
-  const [isLoadingHistory, setIsLoadingHistory] = createSignal(!!props.sessionId);
+  const [isLoadingHistory, setIsLoadingHistory] = createSignal(!!props.sessionId && !props.isDraft);
   const [error, setError] = createSignal<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = createSignal<PendingQuestion | null>(null);
   const [pendingPermission, setPendingPermission] = createSignal<PendingPermission | null>(null);
@@ -265,6 +266,8 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   let messagesContainerRef: HTMLDivElement | undefined;
   let textareaRef: HTMLTextAreaElement | undefined;
   let cancelStream: (() => void) | null = null;
+  // Whether the current streaming session started as a draft (needs finalization)
+  let pendingDraftFinalization: string | null = null;
 
   // Auto-resize textarea
   const autoResize = () => {
@@ -485,12 +488,17 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     if (cancelStream) cancelStream();
   });
 
-  // Load existing messages on mount when sessionId is provided
+  // Load existing messages on mount when sessionId is provided.
+  // Skip if we already have messages in state (e.g. draft just materialized
+  // and we already have the streamed messages — no need to re-fetch).
   createEffect(() => {
     const sid = props.sessionId;
     if (!sid) return;
 
     setCurrentSessionId(sid);
+
+    // If we already have messages (draft→real transition), don't re-fetch
+    if (messages().length > 0) return;
 
     getSessionMessages(props.namespace, props.name, sid)
       .then((data) => {
@@ -647,6 +655,21 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
 
     const isFirstMessage = messages().length === 0;
 
+    // If in draft mode (no backend session yet), materialize it now
+    let effectiveSessionId = props.sessionId || currentSessionId() || undefined;
+    let wasDraft = false;
+    if (props.isDraft && !effectiveSessionId) {
+      const newId = await sessionStore.materializeDraftSession();
+      if (!newId) {
+        setError("Failed to create session. Please try again.");
+        return;
+      }
+      effectiveSessionId = newId;
+      setCurrentSessionId(newId);
+      wasDraft = true;
+      pendingDraftFinalization = newId;
+    }
+
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: "user",
@@ -664,11 +687,11 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     }
 
     if (isFirstMessage) {
-      const sessionId = props.sessionId || currentSessionId();
-      if (sessionId) {
+      if (effectiveSessionId) {
         const truncated = content.length > 50 ? content.slice(0, 50) + "..." : content;
-        sessionStore.updateTabTitle(sessionId, truncated);
-        sessionStore.markSessionUsed(sessionId);
+        // If this was a draft, update the draft tab title (tab still has __draft__ ID)
+        sessionStore.updateTabTitle(wasDraft ? "__draft__" : effectiveSessionId, truncated);
+        sessionStore.markSessionUsed(effectiveSessionId);
       }
     }
     setStreamingParts([]);
@@ -779,6 +802,11 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           setError(errorMsg);
           setIsStreaming(false);
           cancelStream = null;
+          // If this was a draft chat, finalize even on error so the user can retry
+          if (wasDraft && effectiveSessionId) {
+            pendingDraftFinalization = null;
+            sessionStore.finalizeDraftSession(effectiveSessionId);
+          }
         },
         onDone: () => {
           flushTypewriter();
@@ -816,10 +844,16 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           setPendingQuestion(null);
           setPendingPermission(null);
           cancelStream = null;
-          sessionStore.refreshAfterChat();
+          // If this was a draft chat, finalize the transition now that streaming is done
+          if (wasDraft && effectiveSessionId) {
+            pendingDraftFinalization = null;
+            sessionStore.finalizeDraftSession(effectiveSessionId);
+          } else {
+            sessionStore.refreshAfterChat();
+          }
         },
       },
-      props.sessionId || currentSessionId() || undefined,
+      props.sessionId || currentSessionId() || effectiveSessionId || undefined,
       structuredContext
     );
   };
@@ -871,6 +905,14 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
       setStreamingParts([]);
       resetTypewriter();
       setIsStreaming(false);
+
+      // If the user aborted a draft chat mid-stream, finalize it so they
+      // can continue chatting with the now-real session
+      if (pendingDraftFinalization) {
+        const realId = pendingDraftFinalization;
+        pendingDraftFinalization = null;
+        sessionStore.finalizeDraftSession(realId);
+      }
     }
   };
 

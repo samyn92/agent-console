@@ -23,13 +23,17 @@ default:
 # Run full local dev stack with multi-agent support via kubectl proxy
 dev:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -o pipefail
 
-    # Cleanup function that kills the entire process group
+    PIDS=()
+
+    # Cleanup function that kills all tracked child processes
     cleanup() {
         echo ""
         echo "→ Shutting down dev stack..."
-        kill -- -$$ 2>/dev/null
+        for pid in "${PIDS[@]}"; do
+            kill "$pid" 2>/dev/null
+        done
         wait 2>/dev/null
     }
     trap cleanup EXIT INT TERM
@@ -38,20 +42,23 @@ dev:
     #    Each agent gets: http://localhost:8001/api/v1/namespaces/{ns}/services/{name}:4096/proxy
     echo "→ Starting kubectl proxy on :8001..."
     kubectl proxy --port=8001 &
+    PIDS+=($!)
 
     sleep 1
 
     # 2. Go backend on :9090 with dev flags
     #    KUBECTL_PROXY_URL tells the backend to route per-agent via the proxy
     echo "→ Starting Go backend on :9090..."
-    KUBECTL_PROXY_URL=http://localhost:8001 \
-      go run ./cmd/console -addr :9090 -otlp-addr :0 -dev -kubeconfig "$HOME/.kube/config" &
+    export KUBECTL_PROXY_URL=http://localhost:8001
+    go run ./cmd/console -addr :9090 -otlp-addr :0 -dev -kubeconfig "$HOME/.kube/config" &
+    PIDS+=($!)
 
     sleep 2
 
     # 3. Vite frontend
     echo "→ Starting Vite dev server..."
     cd web && pnpm dev &
+    PIDS+=($!)
 
     echo ""
     echo "✓ Dev stack running (multi-agent):"
@@ -84,12 +91,14 @@ dev-back:
 dev-front:
     cd web && pnpm dev
 
-# Kill any leftover dev processes (port-forward, console, vite)
+# Kill any leftover dev processes (port-forward, console, vite, kubectl proxy)
 dev-kill:
     -pkill -f 'port-forward svc/platform-agent'
     -pkill -f 'go run ./cmd/console'
-    -pkill -f 'console.*-dev.*-addr :9090'
+    -pkill -f 'agent-console.*-dev.*-addr :9090'
+    -pkill -f 'kubectl proxy'
     -pkill -f 'vite.*agent-console'
+    -fuser -k 9090/tcp 2>/dev/null
     @echo "→ Cleaned up dev processes."
 
 # --------------------------------------------------------------------------
