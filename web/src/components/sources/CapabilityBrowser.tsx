@@ -657,20 +657,20 @@ const DetailRow: Component<{ label: string; children: any }> = (props) => (
 
 const SelectionDot = (props: { selected: boolean; onClick: () => void; color: "blue" | "cyan" | "gray" | "orange"; size?: "sm" | "md" }) => {
   const colorMap = {
-    blue: { active: "bg-blue-500 border-blue-500", hover: "hover:border-blue-400" },
-    cyan: { active: "bg-cyan-500 border-cyan-500", hover: "hover:border-cyan-400" },
-    gray: { active: "bg-gray-400 border-gray-400", hover: "hover:border-gray-400" },
-    orange: { active: "bg-orange-500 border-orange-500", hover: "hover:border-orange-400" },
+    blue: { active: "bg-blue-500 border-blue-500", hover: "hover:border-blue-400", ring: "hover:ring-blue-500/20" },
+    cyan: { active: "bg-cyan-500 border-cyan-500", hover: "hover:border-cyan-400", ring: "hover:ring-cyan-500/20" },
+    gray: { active: "bg-gray-400 border-gray-400", hover: "hover:border-gray-400", ring: "hover:ring-gray-400/20" },
+    orange: { active: "bg-orange-500 border-orange-500", hover: "hover:border-orange-400", ring: "hover:ring-orange-500/20" },
   };
   const c = colorMap[props.color];
-  const sz = props.size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
-  const dotSz = props.size === "sm" ? "w-1 h-1" : "w-1.5 h-1.5";
+  const sz = props.size === "sm" ? "w-4 h-4" : "w-5 h-5";
+  const dotSz = props.size === "sm" ? "w-1.5 h-1.5" : "w-2 h-2";
 
   return (
     <button
       onClick={(e) => { e.stopPropagation(); props.onClick(); }}
-      class={`${sz} rounded-full border-2 flex items-center justify-center transition-all duration-200 shrink-0 ${
-        props.selected ? c.active : `border-text-muted/40 ${c.hover}`
+      class={`${sz} rounded-full border flex items-center justify-center transition-all duration-200 shrink-0 ${c.ring} hover:ring-2 ${
+        props.selected ? `${c.active} border-transparent` : `border-text-muted/30 ${c.hover}`
       }`}
       title={props.selected ? "Remove from context" : "Add to context"}
     >

@@ -736,41 +736,7 @@ const MainApp = () => {
         center={centerContent()}
       />
 
-      {/* Mobile bottom tab bar — only visible on mobile, hidden when keyboard is open */}
-      <Show when={mobileStore.state.isMobile && !mobileStore.state.keyboardVisible}>
-        <nav class="mobile-bottom-tabs" aria-label="Mobile navigation">
-          <button
-            onClick={() => {
-              setSidebarTab("chats");
-              mobileStore.openDrawer();
-            }}
-            class={`mobile-bottom-tab ${sidebarTab() === "chats" && mobileStore.state.drawerOpen ? "active" : ""}`}
-            aria-label="Chats"
-          >
-            <FiMessageSquare class="w-5 h-5" />
-            <span>Chats</span>
-          </button>
-          <button
-            onClick={() => {
-              setSidebarTab("workflows");
-              mobileStore.openDrawer();
-            }}
-            class={`mobile-bottom-tab ${sidebarTab() === "workflows" && mobileStore.state.drawerOpen ? "active" : ""}`}
-            aria-label="Workflows"
-          >
-            <FiZap class="w-5 h-5" />
-            <span>Workflows</span>
-          </button>
-          <A
-            href="/settings"
-            class="mobile-bottom-tab"
-            aria-label="Settings"
-          >
-            <FiSettings class="w-5 h-5" />
-            <span>Settings</span>
-          </A>
-        </nav>
-      </Show>
+
 
       {/* Context Menu (portal-like, rendered above layout) */}
       <Show when={contextMenu()}>

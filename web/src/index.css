@@ -832,55 +832,6 @@
   justify-content: center;
 }
 
-/* ===== Mobile Bottom Tab Bar ===== */
-.mobile-bottom-tabs {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 30;
-  display: flex;
-  align-items: stretch;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-main);
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  /* Subtle shadow for elevation */
-  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
-}
-
-.mobile-bottom-tab {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px 4px 6px;
-  min-height: 52px;
-  font-size: 0.625rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-  -webkit-tap-highlight-color: transparent;
-  text-decoration: none;
-}
-
-.mobile-bottom-tab:active {
-  background: var(--bg-tertiary);
-}
-
-.mobile-bottom-tab.active {
-  color: var(--accent);
-}
-
-/* Pad the center content above the fixed bottom tab bar on mobile */
-.mobile-bottom-spacing {
-  padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
-}
-
 /* ===== Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -897,10 +848,6 @@
   }
 
   .mobile-drawer-backdrop {
-    transition-duration: 0.01ms !important;
-  }
-
-  .mobile-bottom-tab {
     transition-duration: 0.01ms !important;
   }
 

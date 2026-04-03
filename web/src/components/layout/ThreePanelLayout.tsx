@@ -103,7 +103,7 @@ const TwoPanelLayout: Component<TwoPanelLayoutProps> = (props) => {
       </Show>
 
       {/* ========== CENTER (flex-1) ========== */}
-      <div class={`flex-1 flex flex-col min-w-0 ${mobileStore.state.isMobile && !mobileStore.state.keyboardVisible ? "mobile-bottom-spacing" : ""}`}>
+      <div class="flex-1 flex flex-col min-w-0">
         {props.center}
       </div>
     </div>
