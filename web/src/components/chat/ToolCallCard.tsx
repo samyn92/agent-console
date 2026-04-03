@@ -119,7 +119,7 @@ const BashContent: Component<{ input: BashInput; output?: string; error?: string
       </Show>
 
       {/* Command */}
-      <div class="bg-surface-2/50 rounded px-2 py-1.5 font-mono text-xs">
+      <div class="bg-surface-2/50 rounded px-2 py-1.5 font-mono text-xs break-all">
         <span class="text-primary select-none">$ </span>
         <span class="text-text-secondary">{props.input.command}</span>
       </div>
@@ -158,10 +158,10 @@ const EditContent: Component<{ input: EditInput; success?: boolean }> = (props) 
   return (
     <div class="space-y-1.5">
       {/* File path */}
-      <div class="flex items-center gap-2 text-sm">
-        <FiEdit class="w-4 h-4 text-warning" />
-        <span class="font-semibold text-text">{filename()}</span>
-        <span class="text-xs text-text-muted truncate">{props.input.filePath}</span>
+      <div class="flex items-center gap-2 text-sm min-w-0">
+        <FiEdit class="w-4 h-4 text-warning shrink-0" />
+        <span class="font-semibold text-text shrink-0">{filename()}</span>
+        <span class="text-xs text-text-muted truncate min-w-0">{props.input.filePath}</span>
       </div>
 
       {/* Inline diff preview */}
@@ -635,14 +635,14 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
           <div class="absolute top-1 right-1 pointer-events-none">
             {(() => {
               const IconComp = Icon();
-              return <IconComp class={`w-16 h-16 ${theme().watermark}`} />;
+              return <IconComp class={`w-16 h-16 max-md:w-10 max-md:h-10 ${theme().watermark}`} />;
             })()}
           </div>
         )}
       </Show>
 
       {/* Header */}
-      <div class={`px-3 py-2 flex items-center gap-2 border-b border-inherit min-w-0 relative ${isThemed() ? theme().headerBg : ''}`}>
+      <div class={`px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-inherit min-w-0 relative ${isThemed() ? theme().headerBg : ''}`}>
         <span class={`shrink-0 ${isThemed() ? theme().iconColor : 'text-text-muted'}`}>{toolIcon()}</span>
         <span class="text-sm font-semibold text-text shrink-0">{getToolDisplayName(toolInfo().toolName)}</span>
         {/* Category badge for themed tools */}
@@ -651,19 +651,23 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
             {categoryLabel()}
           </span>
         </Show>
+        {/* Title — inline on desktop, own line on mobile */}
         <Show when={toolInfo().title && toolInfo().toolName !== "todowrite"}>
-          <span class="text-xs text-text-muted truncate min-w-0">- {toolInfo().title}</span>
+          <span class="text-xs text-text-muted truncate min-w-0 max-md:w-full max-md:order-last">· {toolInfo().title}</span>
         </Show>
-        <Show when={toolInfo().duration !== null}>
-          <span class="flex items-center gap-1 text-xs text-text-muted shrink-0 ml-auto">
-            <FiClock class="w-3 h-3" />
-            {formatDuration(toolInfo().duration)}
+        {/* Push duration + status to the right */}
+        <span class="flex items-center gap-2 ml-auto shrink-0">
+          <Show when={toolInfo().duration !== null}>
+            <span class="flex items-center gap-1 text-xs text-text-muted">
+              <FiClock class="w-3 h-3" />
+              {formatDuration(toolInfo().duration)}
+            </span>
+          </Show>
+          <span class={`flex items-center gap-1 ${statusConfig().labelColor}`}>
+            {statusConfig().icon}
+            <span class="text-xs font-semibold">{statusConfig().label}</span>
           </span>
-        </Show>
-        <div class={`flex items-center gap-1 shrink-0 ${statusConfig().labelColor} ${toolInfo().duration === null ? 'ml-auto' : ''}`}>
-          {statusConfig().icon}
-          <span class="text-xs font-semibold">{statusConfig().label}</span>
-        </div>
+        </span>
       </div>
 
       {/* Tool-specific content */}

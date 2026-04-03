@@ -1652,3 +1652,27 @@ const MiniEmpty = (props: { message: string }) => (
 );
 
 export default CapabilityBrowser;
+
+// Named exports for reuse in AgentDetailPanel
+export {
+  CapabilityBrowser,
+  InlineK8sBrowser,
+  InlineHelmBrowser,
+  InlineGitHubBrowser,
+  InlineGitLabBrowser,
+  PermissionsView,
+  StatusView,
+  SelectionDot,
+  CapabilityTabButton,
+  InlineTabButton,
+  MiniLoader,
+  MiniEmpty,
+  accentMap,
+  capabilityMeta,
+  KubernetesIcon,
+  HelmIcon,
+  GitHubIcon,
+  GitLabIcon,
+};
+
+export type { CapabilityType, CapabilityTab, CapabilityInfo };

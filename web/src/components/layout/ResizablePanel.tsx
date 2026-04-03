@@ -32,6 +32,7 @@ interface ResizablePanelProps {
 const ResizablePanel: Component<ResizablePanelProps> = (props) => {
   const [isResizing, setIsResizing] = createSignal(false);
 
+  // --- Mouse resize ---
   const startResize = (e: MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
@@ -61,6 +62,36 @@ const ResizablePanel: Component<ResizablePanelProps> = (props) => {
     document.body.style.userSelect = "none";
   };
 
+  // --- Touch resize ---
+  const startTouchResize = (e: TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    e.preventDefault();
+    setIsResizing(true);
+
+    const startX = e.touches[0].clientX;
+    const startWidth = props.width;
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const delta = props.side === "left"
+        ? e.touches[0].clientX - startX
+        : startX - e.touches[0].clientX;
+      const newWidth = Math.max(props.minWidth, Math.min(props.maxWidth, startWidth + delta));
+      props.onResize(newWidth);
+    };
+
+    const onTouchEnd = () => {
+      setIsResizing(false);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchEnd);
+    };
+
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onTouchEnd);
+    document.addEventListener("touchcancel", onTouchEnd);
+  };
+
   const handleDoubleClick = () => {
     props.onToggleCollapse();
   };
@@ -85,11 +116,13 @@ const ResizablePanel: Component<ResizablePanelProps> = (props) => {
       >
         {props.children}
 
-        {/* Resize handle */}
+        {/* Resize handle — wider touch area on touch devices */}
         <div
           class={handleClasses()}
           onMouseDown={startResize}
+          onTouchStart={startTouchResize}
           onDblClick={handleDoubleClick}
+          style={{ "touch-action": "none" }}
         />
       </aside>
     </Show>

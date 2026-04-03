@@ -344,7 +344,8 @@ export function chatWithAgent(
   name: string,
   message: string,
   callbacks: ChatStreamCallbacks,
-  sessionId?: string
+  sessionId?: string,
+  context?: { kubernetes?: Array<{ kind: string; name: string; namespace: string }>; github?: Array<{ owner: string; repo: string; path: string; isFile?: boolean }>; gitlab?: Array<{ project: string; path: string; isFile?: boolean }> }
 ): () => void {
   const controller = new AbortController();
   let unsubscribeEvents: (() => void) | null = null;
@@ -601,7 +602,11 @@ export function chatWithAgent(
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message, ...(sessionId ? { sessionId } : {}) }),
+    body: JSON.stringify({
+      message,
+      ...(sessionId ? { sessionId } : {}),
+      ...(context ? { context } : {}),
+    }),
     signal: controller.signal,
   })
     .then(async (response) => {

@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	agentsv1alpha1 "github.com/samyn92/agent-operator-core/api/v1alpha1"
 	"github.com/samyn92/agent-console/internal/github"
 	"github.com/samyn92/agent-console/internal/gitlab"
 	"github.com/samyn92/agent-console/internal/k8s"
 	"github.com/samyn92/agent-console/internal/opencode"
 	"github.com/samyn92/agent-console/internal/telemetry"
+	agentsv1alpha1 "github.com/samyn92/agent-operator-core/api/v1alpha1"
 	"go.uber.org/zap"
 )
 
@@ -138,7 +138,16 @@ func (h *Handlers) ChatWithAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send message to OpenCode asynchronously
-	if err := h.opencode.SendMessageAsync(r.Context(), serviceURL, sessionID, req.Message); err != nil {
+	// If context is provided, resolve it to rich metadata and prepend to message
+	messageToSend := req.Message
+	if req.Context != nil {
+		contextBlock := h.resolveContextToMarkdown(r.Context(), req.Context)
+		if contextBlock != "" {
+			messageToSend = contextBlock + messageToSend
+		}
+	}
+
+	if err := h.opencode.SendMessageAsync(r.Context(), serviceURL, sessionID, messageToSend); err != nil {
 		h.log.Errorw("Failed to send message to agent", "error", err, "url", serviceURL)
 		h.opencode.InvalidateSession(namespace, name, userID)
 		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("Agent error: %v", err))

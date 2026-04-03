@@ -75,6 +75,16 @@ function createGlobalEventsStore() {
   const MAX_RECONNECT_ATTEMPTS = 15;
   const BASE_RECONNECT_DELAY = 1000;
 
+  /** Timestamp of the last received SSE event (any type, including heartbeats) */
+  let lastEventTime = 0;
+
+  /**
+   * How long without events before we consider the connection stale (ms).
+   * If the backend sends heartbeats every ~30s, 60s of silence means
+   * we've missed at least one heartbeat and the connection is likely dead.
+   */
+  const STALE_THRESHOLD = 60_000;
+
   // Selected agent key — events for this agent are forwarded to the session store
   let selectedAgentKey: string | null = null;
   let eventCallback: AgentEventCallback | null = null;
@@ -181,12 +191,14 @@ function createGlobalEventsStore() {
 
     es.addEventListener("connected", () => {
       reconnectAttempts = 0;
+      lastEventTime = Date.now();
       setState("connected", true);
       setEventBusConnected(true);
     });
 
     es.addEventListener("agent.event", (e) => {
       try {
+        lastEventTime = Date.now();
         const envelope = JSON.parse((e as MessageEvent).data) as AgentEventEnvelope;
         handleAgentEvent(envelope);
       } catch {
@@ -196,6 +208,7 @@ function createGlobalEventsStore() {
 
     es.addEventListener("agent.connected", (e) => {
       try {
+        lastEventTime = Date.now();
         const status = JSON.parse((e as MessageEvent).data) as AgentConnectionStatus;
         handleConnectionStatus(status);
       } catch {}
@@ -203,6 +216,7 @@ function createGlobalEventsStore() {
 
     es.addEventListener("agent.disconnected", (e) => {
       try {
+        lastEventTime = Date.now();
         const status = JSON.parse((e as MessageEvent).data) as AgentConnectionStatus;
         handleConnectionStatus(status);
       } catch {}
@@ -210,6 +224,7 @@ function createGlobalEventsStore() {
 
     es.addEventListener("agent.added", (e) => {
       try {
+        lastEventTime = Date.now();
         const data = JSON.parse((e as MessageEvent).data) as { namespace: string; name: string };
         handleAgentAdded(data);
       } catch {}
@@ -217,6 +232,7 @@ function createGlobalEventsStore() {
 
     es.addEventListener("agent.removed", (e) => {
       try {
+        lastEventTime = Date.now();
         const data = JSON.parse((e as MessageEvent).data) as { namespace: string; name: string };
         handleAgentRemoved(data);
       } catch {}
@@ -224,6 +240,7 @@ function createGlobalEventsStore() {
 
     es.addEventListener("heartbeat", () => {
       // Heartbeat received — connection is alive
+      lastEventTime = Date.now();
     });
 
     es.onerror = () => {
@@ -263,6 +280,34 @@ function createGlobalEventsStore() {
   // Clean up on disposal
   onCleanup(() => {
     disconnect();
+  });
+
+  // ---- Visibility change handler ----
+  // When the page is backgrounded (mobile or desktop), the SSE connection
+  // may silently die. When the user returns, check if the connection is stale
+  // and reconnect proactively instead of waiting for onerror (which may never fire).
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      const now = Date.now();
+      const timeSinceLastEvent = now - lastEventTime;
+      const isStale = lastEventTime > 0 && timeSinceLastEvent > STALE_THRESHOLD;
+
+      if (isStale || (eventSource && eventSource.readyState === EventSource.CLOSED)) {
+        // Connection is stale or closed — force reconnect
+        reconnectAttempts = 0; // Reset backoff since this is a fresh user interaction
+        connect();
+      }
+    }
+  };
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  }
+
+  onCleanup(() => {
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }
   });
 
   // ---- Public API ----
