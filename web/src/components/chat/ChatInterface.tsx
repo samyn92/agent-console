@@ -1,6 +1,7 @@
 import type { Component } from "solid-js";
-import { createSignal, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
-import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiX } from "solid-icons/fi";
+import { createSignal, createMemo, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiX, FiTerminal, FiEdit3, FiSearch, FiCheckSquare, FiHelpCircle, FiCode } from "solid-icons/fi";
 import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
@@ -17,6 +18,85 @@ import Markdown, { StreamingMarkdown } from "./Markdown";
 
 import { detectToolCategory, toolThemes, getCategoryIcon, getCategoryLabel } from "../../lib/capability-themes";
 
+// ============================================================================
+// TOOL ACTIVITY HELPERS
+// ============================================================================
+
+/** Returns a human-readable activity label and detail for a tool in pending/running state.
+ *  Mirrors the transient status lines shown in OpenCode's terminal UI. */
+function getToolActivity(toolName: string, input: Record<string, unknown>): { label: string; detail?: string; icon: Component<{ class?: string }> } {
+  switch (toolName) {
+    case "bash": {
+      const cmd = typeof input.command === "string" ? input.command : undefined;
+      const truncated = cmd && cmd.length > 60 ? cmd.slice(0, 60) + "..." : cmd;
+      return { label: "Executing command", detail: truncated, icon: FiTerminal };
+    }
+    case "read": {
+      const fp = typeof input.filePath === "string" ? input.filePath : undefined;
+      const short = fp ? fp.split("/").slice(-2).join("/") : undefined;
+      return { label: "Reading file", detail: short, icon: FiEye };
+    }
+    case "edit": {
+      const fp = typeof input.filePath === "string" ? input.filePath : undefined;
+      const short = fp ? fp.split("/").slice(-2).join("/") : undefined;
+      return { label: "Editing file", detail: short, icon: FiEdit3 };
+    }
+    case "write": {
+      const fp = typeof input.filePath === "string" ? input.filePath : undefined;
+      const short = fp ? fp.split("/").slice(-2).join("/") : undefined;
+      return { label: "Writing file", detail: short, icon: FiEdit3 };
+    }
+    case "glob": {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined;
+      return { label: "Finding files", detail: pattern, icon: FiSearch };
+    }
+    case "grep": {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined;
+      return { label: "Searching", detail: pattern, icon: FiSearch };
+    }
+    case "task": {
+      const desc = typeof input.description === "string" ? input.description : undefined;
+      return { label: "Delegating", detail: desc, icon: FiGitBranch };
+    }
+    case "todowrite":
+      return { label: "Updating plan", icon: FiCheckSquare };
+    case "question":
+      return { label: "Asking question", icon: FiHelpCircle };
+    case "webfetch": {
+      const url = typeof input.url === "string" ? input.url : undefined;
+      const short = url && url.length > 50 ? url.slice(0, 50) + "..." : url;
+      return { label: "Fetching", detail: short, icon: FiCode };
+    }
+    case "skill":
+      return { label: "Loading skill", icon: FiBookOpen };
+    default: {
+      // For capability-provided tools, use the tool name as-is
+      const name = toolName.replace(/[_-]/g, " ");
+      return { label: `Running ${name}`, icon: FiTool };
+    }
+  }
+}
+
+/** Transient activity indicator shown while a tool is pending or running */
+const ToolActivityLine: Component<{ toolPart: ToolPart }> = (props) => {
+  const activity = () => getToolActivity(props.toolPart.tool, props.toolPart.state.input);
+
+  return (
+    <div class="flex items-center gap-2.5 py-1.5 px-2 fade-in">
+      <div class="relative flex items-center justify-center w-5 h-5">
+        <div class="absolute inset-0 border-[1.5px] border-accent/20 border-t-accent/70 rounded-full animate-spin" />
+        <Dynamic component={activity().icon} class="w-3 h-3 text-accent/70" />
+      </div>
+      <span class="text-xs text-text-muted">
+        {activity().label}
+        <Show when={activity().detail}>
+          <span class="text-text-muted/60 ml-1 font-mono">{activity().detail}</span>
+        </Show>
+      </span>
+    </div>
+  );
+};
+
 interface ChatInterfaceProps {
   namespace: string;
   name: string;
@@ -30,8 +110,9 @@ interface ChatInterfaceProps {
   capabilities?: CapabilityResponse[];
 }
 
-/** Renders a single MessagePart inline in the chat */
-const PartContent: Component<{ part: MessagePart }> = (props) => {
+/** Renders a single MessagePart inline in the chat.
+ *  latestTodoCallId — if set, todowrite tool parts with a different callID are hidden. */
+const PartContent: Component<{ part: MessagePart; latestTodoCallId?: string }> = (props) => {
   return (
     <Switch>
       {/* Text bubble */}
@@ -43,13 +124,35 @@ const PartContent: Component<{ part: MessagePart }> = (props) => {
         </div>
       </Match>
 
-      {/* Tool call card */}
+      {/* Tool call — transient activity line while running, full card when done.
+           For todowrite tools, only the latest instance is shown (older ones are hidden). */}
       <Match when={props.part.type === "tool"}>
-        <div class="flex justify-start">
-          <div class="max-w-[85%] max-md:max-w-full">
-            <ToolCallCard toolPart={(props.part as { type: "tool"; toolPart: ToolPart }).toolPart} />
-          </div>
-        </div>
+        {(() => {
+          const toolPart = () => (props.part as { type: "tool"; toolPart: ToolPart }).toolPart;
+          const isActive = () => {
+            const s = toolPart().state?.status;
+            return s === "pending" || s === "running";
+          };
+          // Hide stale todowrite parts — only the latest one matters
+          const isHiddenTodo = () => {
+            const tp = toolPart();
+            if (tp.tool !== "todowrite") return false;
+            return props.latestTodoCallId != null && tp.callID !== props.latestTodoCallId;
+          };
+          return (
+            <Show when={!isHiddenTodo()}>
+              <Show when={isActive()} fallback={
+                <div class="flex justify-start">
+                  <div class="max-w-[85%] max-md:max-w-full">
+                    <ToolCallCard toolPart={toolPart()} />
+                  </div>
+                </div>
+              }>
+                <ToolActivityLine toolPart={toolPart()} />
+              </Show>
+            </Show>
+          );
+        })()}
       </Match>
 
       {/* Reasoning (extended thinking) */}
@@ -184,6 +287,7 @@ const PartContent: Component<{ part: MessagePart }> = (props) => {
 
 interface MessageProps {
   message: ChatMessage;
+  latestTodoCallId?: string;
 }
 
 const Message: Component<MessageProps> = (props) => {
@@ -216,7 +320,7 @@ const Message: Component<MessageProps> = (props) => {
     return (
       <>
         <For each={message().parts}>
-          {(part) => <PartContent part={part} />}
+          {(part) => <PartContent part={part} latestTodoCallId={props.latestTodoCallId} />}
         </For>
       </>
     );
@@ -261,6 +365,30 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
   const [pendingQuestion, setPendingQuestion] = createSignal<PendingQuestion | null>(null);
   const [pendingPermission, setPendingPermission] = createSignal<PendingPermission | null>(null);
   const [isFocused, setIsFocused] = createSignal(false);
+
+  // Compute the callID of the last todowrite tool part across all messages
+  // and streaming parts. Older todowrite cards are hidden so only the latest
+  // plan is visible (matching OpenCode's terminal UI behaviour).
+  const latestTodoCallId = createMemo((): string | undefined => {
+    let lastId: string | undefined;
+    // Scan historical messages (newest last)
+    for (const msg of messages()) {
+      if (msg.parts) {
+        for (const p of msg.parts) {
+          if (p.type === "tool" && (p as { type: "tool"; toolPart: ToolPart }).toolPart.tool === "todowrite") {
+            lastId = (p as { type: "tool"; toolPart: ToolPart }).toolPart.callID;
+          }
+        }
+      }
+    }
+    // Scan streaming parts (appended after messages)
+    for (const p of streamingParts()) {
+      if (p.type === "tool" && (p as { type: "tool"; toolPart: ToolPart }).toolPart.tool === "todowrite") {
+        lastId = (p as { type: "tool"; toolPart: ToolPart }).toolPart.callID;
+      }
+    }
+    return lastId;
+  });
 
   let messagesEndRef: HTMLDivElement | undefined;
   let messagesContainerRef: HTMLDivElement | undefined;
@@ -1105,13 +1233,13 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           }
         >
           <For each={messages()}>
-            {(message) => <Message message={message} />}
+            {(message) => <Message message={message} latestTodoCallId={latestTodoCallId()} />}
           </For>
 
           {/* Streaming message */}
           <Show when={isStreaming()}>
             <For each={streamingParts()}>
-              {(part) => <PartContent part={part} />}
+              {(part) => <PartContent part={part} latestTodoCallId={latestTodoCallId()} />}
             </For>
 
             {/* Current text being streamed — throttled markdown rendering */}
@@ -1120,14 +1248,6 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
                 <div class="max-w-[85%] rounded-2xl rounded-bl-md px-4 py-2.5 bg-surface-2 text-text">
                   <StreamingMarkdown content={currentTextBuffer()} class="text-sm leading-relaxed" />
                 </div>
-              </div>
-            </Show>
-
-            {/* Thinking indicator — shown when a tool is running and no text is streaming */}
-            <Show when={streamingParts().some(p => p.type === "tool" && p.toolPart.state.status === "running") && !currentTextBuffer()}>
-              <div class="flex items-center gap-2 py-1 px-1">
-                <div class="w-3.5 h-3.5 border-[1.5px] border-accent/20 border-t-accent/60 rounded-full animate-spin" />
-                <span class="text-xs text-text-muted">Thinking...</span>
               </div>
             </Show>
 

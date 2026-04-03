@@ -720,5 +720,10 @@ export function getToolDisplayName(toolName: string): string {
     question: "Question",
     skill: "Load Skill",
   };
-  return names[toolName] || toolName;
+  if (names[toolName]) return names[toolName];
+  // Auto-format capability tool names: "gitlab-contributor" → "GitLab Contributor"
+  return toolName
+    .split(/[-_]/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

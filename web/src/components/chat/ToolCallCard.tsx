@@ -427,7 +427,7 @@ const parseToolOutput = (output: string): { content: string; error?: string; isW
 };
 
 /** Generic/Default Renderer */
-const GenericContent: Component<{ input: Record<string, unknown>; output?: string; title?: string }> = (props) => {
+const GenericContent: Component<{ input: Record<string, unknown>; output?: string; title?: string; metadata?: Record<string, unknown> }> = (props) => {
   // Parse the output to handle gateway format
   const parsedOutput = createMemo(() => parseToolOutput(props.output || ""));
 
@@ -438,34 +438,107 @@ const GenericContent: Component<{ input: Record<string, unknown>; output?: strin
     return null;
   });
 
+  // Description from input (like BashContent's description field)
+  const description = createMemo(() => {
+    const desc = props.input.description;
+    if (typeof desc === "string" && desc.trim()) return desc;
+    // Also check metadata for a description
+    if (props.metadata) {
+      const md = props.metadata.description;
+      if (typeof md === "string" && md.trim()) return md;
+    }
+    return null;
+  });
+
+  // Working directory from input
+  const workdir = createMemo(() => {
+    const wd = props.input.workdir;
+    if (typeof wd === "string" && wd.trim()) return wd;
+    return null;
+  });
+
+  // Input fields to show — exclude command, description, workdir, timeout (noise)
+  const displayInputs = createMemo(() =>
+    Object.entries(props.input)
+      .filter(([k]) => !["command", "description", "workdir", "timeout"].includes(k))
+      .slice(0, 3)
+  );
+
+  // If we have a title (which is already shown in the header), the raw command
+  // and input details are implementation noise — collapse them behind a toggle.
+  const hasTitle = () => !!props.title;
+
   return (
     <div class="space-y-1.5">
-      <Show when={props.title}>
-        <div class="text-sm text-text">{props.title}</div>
+      {/* Description from input or metadata (like BashContent) */}
+      <Show when={description()}>
+        <div class="text-xs text-text-muted">{description()}</div>
       </Show>
-      
-      {/* Show command if available */}
-      <Show when={command()}>
-        <div class="bg-surface-2/50 rounded px-2 py-1.5 font-mono text-xs">
-          <span class="text-primary select-none">$ </span>
-          <span class="text-text-secondary">{command()}</span>
+
+      {/* Working directory */}
+      <Show when={workdir()}>
+        <div class="text-xs text-text-muted flex items-center gap-1">
+          <FiFolder class="w-3 h-3" />
+          {workdir()}
         </div>
       </Show>
 
-      {/* Show other input values (excluding command) */}
-      <Show when={Object.keys(props.input).filter(k => k !== "command").length > 0}>
-        <div class="text-xs text-text-muted">
-          <For each={Object.entries(props.input).filter(([k]) => k !== "command").slice(0, 3)}>
-            {([key, value]) => (
-              <div class="truncate">
-                <span class="font-semibold">{key}:</span>{" "}
-                <span class="text-text-secondary">
-                  {typeof value === "string" ? value.slice(0, 100) : JSON.stringify(value).slice(0, 100)}
-                </span>
+      {/* Command + input details: collapsed when title exists, expanded otherwise */}
+      <Show when={command() || displayInputs().length > 0}>
+        <Show when={hasTitle()} fallback={
+          <>
+            <Show when={command()}>
+              <div class="bg-surface-2/50 rounded px-2 py-1.5 font-mono text-xs break-all">
+                <span class="text-primary select-none">$ </span>
+                <span class="text-text-secondary">{command()}</span>
               </div>
-            )}
-          </For>
-        </div>
+            </Show>
+            <Show when={displayInputs().length > 0}>
+              <div class="text-xs text-text-muted">
+                <For each={displayInputs()}>
+                  {([key, value]) => (
+                    <div class="truncate">
+                      <span class="font-semibold">{key}:</span>{" "}
+                      <span class="text-text-secondary">
+                        {typeof value === "string" ? value.slice(0, 100) : JSON.stringify(value).slice(0, 100)}
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </>
+        }>
+          {/* When title is present, collapse raw details */}
+          <details class="group">
+            <summary class="text-xs text-text-muted cursor-pointer hover:text-text-secondary flex items-center gap-1">
+              <FiChevronRight class="w-3 h-3 group-open:rotate-90 transition-transform" />
+              Details
+            </summary>
+            <div class="mt-1.5 space-y-1.5">
+              <Show when={command()}>
+                <div class="bg-surface-2/50 rounded px-2 py-1.5 font-mono text-xs break-all">
+                  <span class="text-primary select-none">$ </span>
+                  <span class="text-text-secondary">{command()}</span>
+                </div>
+              </Show>
+              <Show when={displayInputs().length > 0}>
+                <div class="text-xs text-text-muted">
+                  <For each={displayInputs()}>
+                    {([key, value]) => (
+                      <div class="truncate">
+                        <span class="font-semibold">{key}:</span>{" "}
+                        <span class="text-text-secondary">
+                          {typeof value === "string" ? value.slice(0, 100) : JSON.stringify(value).slice(0, 100)}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </details>
+        </Show>
       </Show>
 
       {/* Output - use parsed content for gateway format */}
@@ -508,22 +581,26 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
     let duration: number | null = null;
     let title: string | undefined;
     let input: Record<string, unknown> = {};
+    let metadata: Record<string, unknown> | undefined;
 
     if (state?.status === "completed") {
       status = "success";
       output = state.output;
       title = state.title;
       input = state.input;
+      metadata = state.metadata;
       duration = state.time.end - state.time.start;
     } else if (state?.status === "error") {
       status = "error";
       error = state.error;
       input = state.input;
+      metadata = state.metadata;
       duration = state.time.end - state.time.start;
     } else if (state?.status === "running") {
       status = "running";
       title = state.title;
       input = state.input;
+      metadata = state.metadata;
       duration = Date.now() - state.time.start;
     } else if (state?.status === "pending") {
       status = "pending";
@@ -539,6 +616,7 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
       duration,
       title,
       input,
+      metadata,
       traceId: undefined as string | undefined
     };
   });
@@ -677,6 +755,7 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
             input={toolInfo().input} 
             output={toolInfo().output} 
             title={toolInfo().title} 
+            metadata={toolInfo().metadata}
           />
         }>
           {/* Todo List */}

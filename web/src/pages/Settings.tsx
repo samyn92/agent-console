@@ -5,6 +5,7 @@ import {
   FiCheck, FiTrash2, FiInfo
 } from "solid-icons/fi";
 import { themeStore } from "../stores/theme";
+import { DEFAULT_SEED_COLOR } from "../lib/material-theme";
 
 // Settings store (in a real app, this would persist to localStorage or API)
 const [settings, setSettings] = createSignal({
@@ -114,8 +115,24 @@ const Select: Component<{
   </div>
 );
 
+// Preset accent colors for Material You
+const ACCENT_PRESETS = [
+  { color: "#6750A4", label: "Purple" },
+  { color: "#006A6A", label: "Teal" },
+  { color: "#0061A4", label: "Blue" },
+  { color: "#7D5260", label: "Rose" },
+  { color: "#006E1C", label: "Green" },
+  { color: "#A8400D", label: "Orange" },
+  { color: "#904B40", label: "Brown" },
+  { color: "#006874", label: "Cyan" },
+];
+
 const SettingsPage: Component = () => {
-  const { themePreference, setThemePreference } = themeStore;
+  const {
+    themePreference, setThemePreference,
+    designTheme, setDesignTheme,
+    accentColor, setAccentColor,
+  } = themeStore;
   const [saved, setSaved] = createSignal(false);
 
   const saveSettings = () => {
@@ -175,26 +192,162 @@ const SettingsPage: Component = () => {
         title="Appearance"
         description="Customize how the console looks"
       >
-        <p class="text-sm text-text-secondary mb-3">Theme</p>
-        <div class="grid grid-cols-3 gap-3">
-          <RadioOption
-            label="Dark"
-            icon={<FiMoon class="w-4 h-4" />}
-            selected={themePreference() === "dark"}
-            onClick={() => setThemePreference("dark")}
-          />
-          <RadioOption
-            label="Light"
-            icon={<FiSun class="w-4 h-4" />}
-            selected={themePreference() === "light"}
-            onClick={() => setThemePreference("light")}
-          />
-          <RadioOption
-            label="System"
-            icon={<FiMonitor class="w-4 h-4" />}
-            selected={themePreference() === "system"}
-            onClick={() => setThemePreference("system")}
-          />
+        {/* Design Theme */}
+        <div>
+          <p class="text-sm text-text-secondary mb-3">Design Theme</p>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setDesignTheme("vercel")}
+              class={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                designTheme() === "vercel"
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-border-hover hover:bg-surface-hover"
+              }`}
+            >
+              {/* Vercel preview */}
+              <div class="w-full h-20 rounded-lg overflow-hidden border border-border/50">
+                <div class="h-full flex flex-col">
+                  <div class="h-3 bg-[#09090b] flex items-center gap-0.5 px-1">
+                    <span class="w-1 h-1 rounded-full bg-[#ef4444]" />
+                    <span class="w-1 h-1 rounded-full bg-[#eab308]" />
+                    <span class="w-1 h-1 rounded-full bg-[#22c55e]" />
+                  </div>
+                  <div class="flex-1 flex">
+                    <div class="w-1/4 bg-[#0c0c0e] border-r border-[#27272a]" />
+                    <div class="flex-1 bg-[#09090b] p-1.5">
+                      <div class="w-3/4 h-1 bg-[#27272a] rounded mb-1" />
+                      <div class="w-1/2 h-1 bg-[#27272a] rounded mb-1" />
+                      <div class="w-2/3 h-1 bg-[#3b82f6]/40 rounded" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="text-center">
+                <p class={`text-sm font-semibold ${designTheme() === "vercel" ? "text-primary" : "text-text"}`}>
+                  Vercel
+                </p>
+                <p class="text-[11px] text-text-muted">Minimal & sharp</p>
+              </div>
+              <Show when={designTheme() === "vercel"}>
+                <span class="absolute top-2 right-2">
+                  <FiCheck class="w-4 h-4 text-primary" />
+                </span>
+              </Show>
+            </button>
+
+            <button
+              onClick={() => setDesignTheme("material")}
+              class={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                designTheme() === "material"
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-border-hover hover:bg-surface-hover"
+              }`}
+            >
+              {/* Material preview */}
+              <div class="w-full h-20 rounded-lg overflow-hidden border border-border/50">
+                <div class="h-full flex flex-col">
+                  <div class="h-3 bg-[#1c1b1f] flex items-center px-1">
+                    <div class="w-4 h-1 bg-[#6750A4] rounded-full" />
+                  </div>
+                  <div class="flex-1 flex">
+                    <div class="w-1/4 bg-[#1c1b1f] border-r border-[#49454f]" />
+                    <div class="flex-1 bg-[#141218] p-1.5">
+                      <div class="w-3/4 h-1 bg-[#49454f] rounded-full mb-1" />
+                      <div class="w-1/2 h-1 bg-[#49454f] rounded-full mb-1" />
+                      <div class="w-2/3 h-1 bg-[#D0BCFF]/40 rounded-full" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="text-center">
+                <p class={`text-sm font-semibold ${designTheme() === "material" ? "text-primary" : "text-text"}`}>
+                  Material You
+                </p>
+                <p class="text-[11px] text-text-muted">Dynamic & expressive</p>
+              </div>
+              <Show when={designTheme() === "material"}>
+                <span class="absolute top-2 right-2">
+                  <FiCheck class="w-4 h-4 text-primary" />
+                </span>
+              </Show>
+            </button>
+          </div>
+        </div>
+
+        {/* Accent Color — only shown for Material You */}
+        <Show when={designTheme() === "material"}>
+          <div class="mt-4 pt-4 border-t border-border">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <p class="text-sm font-semibold text-text">Accent Color</p>
+                <p class="text-xs text-text-secondary mt-0.5">Pick a seed color for the Material You palette</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="w-6 h-6 rounded-full border-2 border-border shadow-sm"
+                  style={{ "background-color": accentColor() }}
+                />
+                <input
+                  type="color"
+                  value={accentColor()}
+                  onInput={(e) => setAccentColor(e.currentTarget.value)}
+                  class="w-8 h-8 cursor-pointer bg-transparent border-0 p-0"
+                  title="Custom color"
+                />
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <For each={ACCENT_PRESETS}>
+                {(preset) => (
+                  <button
+                    onClick={() => setAccentColor(preset.color)}
+                    class={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
+                      accentColor().toLowerCase() === preset.color.toLowerCase()
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:border-border-hover text-text-secondary hover:bg-surface-hover"
+                    }`}
+                  >
+                    <span
+                      class="w-3.5 h-3.5 rounded-full shrink-0"
+                      style={{ "background-color": preset.color }}
+                    />
+                    {preset.label}
+                  </button>
+                )}
+              </For>
+            </div>
+            <button
+              onClick={() => setAccentColor(DEFAULT_SEED_COLOR)}
+              class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Reset to default
+            </button>
+          </div>
+        </Show>
+
+        {/* Light/Dark Mode */}
+        <div class="mt-4 pt-4 border-t border-border">
+          <p class="text-sm text-text-secondary mb-3">Mode</p>
+          <div class="grid grid-cols-3 gap-3">
+            <RadioOption
+              label="Dark"
+              icon={<FiMoon class="w-4 h-4" />}
+              selected={themePreference() === "dark"}
+              onClick={() => setThemePreference("dark")}
+            />
+            <RadioOption
+              label="Light"
+              icon={<FiSun class="w-4 h-4" />}
+              selected={themePreference() === "light"}
+              onClick={() => setThemePreference("light")}
+            />
+            <RadioOption
+              label="System"
+              icon={<FiMonitor class="w-4 h-4" />}
+              selected={themePreference() === "system"}
+              onClick={() => setThemePreference("system")}
+            />
+          </div>
         </div>
 
         <div class="mt-4 pt-4 border-t border-border">

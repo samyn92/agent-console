@@ -876,6 +876,92 @@
   }
 }
 
+/* ===== Material You Refinements ===== */
+/* When .material is on <html>, adjust shape, elevation, and motion to
+   match Material Design 3 language. Colors are applied inline by the
+   theme store — these rules handle everything else. */
+
+/* Shape — MD3 uses rounder corners */
+.material button,
+.material input,
+.material select,
+.material textarea,
+.material [class*="rounded"] {
+  border-radius: 12px;
+}
+
+.material .md-code-block {
+  border-radius: 12px;
+}
+
+.material .md-prose code:not(.hljs) {
+  border-radius: 6px;
+}
+
+/* Cards / panels — larger radius */
+.material .composer-input {
+  border-radius: 16px;
+}
+
+/* Pill buttons (e.g., primary action, chips) */
+.material button[class*="rounded-full"] {
+  border-radius: 9999px; /* keep pill shape */
+}
+
+/* Elevation — MD3 uses softer, more spread shadows with tonal surface tint */
+.material {
+  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.07), 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+}
+
+.material.dark {
+  --shadow-sm: 0 1px 3px 1px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 2px 6px 2px rgba(0, 0, 0, 0.25), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.25), 0 1px 3px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Motion — MD3 standard duration is 300ms with emphasized decelerate */
+.material {
+  --transition-default: 300ms;
+}
+
+/* Scrollbar — slightly thicker, more rounded for Material feel */
+.material * {
+  scrollbar-width: auto;
+}
+
+.material ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.material ::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+}
+
+/* Tab indicator — thicker, rounded like MD3 */
+.material .tab-active-indicator {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--primary);
+}
+
+/* Neural trace — slightly softer in Material mode */
+.material .neural-trace__beam {
+  opacity: 0.6;
+}
+.material .neural-trace__glow {
+  opacity: 0.12;
+}
+
+.material.dark .neural-trace__beam {
+  opacity: 0.7;
+}
+.material.dark .neural-trace__glow {
+  opacity: 0.15;
+}
+
 /* ===== Mobile-specific scrolling fixes ===== */
 @media (max-width: 767px) {
   /* Prevent overscroll bounce on iOS */
