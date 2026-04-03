@@ -137,6 +137,22 @@ type PipelineJob struct {
 	} `json:"pipeline"`
 }
 
+// ListUserProjects lists projects owned by a user or group.
+// Uses the /users/:username/projects endpoint for user-owned projects.
+func (c *Client) ListUserProjects(ctx context.Context, token, domain, username string) ([]Project, error) {
+	apiURL := fmt.Sprintf("%s/users/%s/projects?per_page=100&order_by=updated_at", baseURL(domain), url.PathEscape(username))
+
+	var result []Project
+	if err := c.doRequest(ctx, token, apiURL, &result); err != nil {
+		// Fall back to group projects if user endpoint fails
+		groupURL := fmt.Sprintf("%s/groups/%s/projects?per_page=100&order_by=updated_at&include_subgroups=true", baseURL(domain), url.PathEscape(username))
+		if err2 := c.doRequest(ctx, token, groupURL, &result); err2 != nil {
+			return nil, fmt.Errorf("listing projects for %s: user: %w, group: %w", username, err, err2)
+		}
+	}
+	return result, nil
+}
+
 // GetProject fetches project information
 func (c *Client) GetProject(ctx context.Context, token, domain, pathWithNamespace string) (*Project, error) {
 	encodedPath := url.PathEscape(pathWithNamespace)

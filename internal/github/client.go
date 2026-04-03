@@ -179,6 +179,22 @@ type Review struct {
 	} `json:"user"`
 }
 
+// ListOrgRepos lists repositories for an organization or user.
+// Tries the org endpoint first, falls back to the user endpoint.
+func (c *Client) ListOrgRepos(ctx context.Context, token, owner string) ([]Repository, error) {
+	apiURL := fmt.Sprintf("%s/orgs/%s/repos?per_page=100&sort=updated", c.baseURL, owner)
+
+	var result []Repository
+	if err := c.doRequest(ctx, token, apiURL, &result); err != nil {
+		// Fall back to user repos
+		userURL := fmt.Sprintf("%s/users/%s/repos?per_page=100&sort=updated", c.baseURL, owner)
+		if err2 := c.doRequest(ctx, token, userURL, &result); err2 != nil {
+			return nil, fmt.Errorf("listing repos for %s: org: %w, user: %w", owner, err, err2)
+		}
+	}
+	return result, nil
+}
+
 // GetRepository fetches repository information
 func (c *Client) GetRepository(ctx context.Context, token, owner, repo string) (*Repository, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, owner, repo)

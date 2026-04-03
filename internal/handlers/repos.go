@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/samyn92/agent-console/internal/github"
@@ -16,8 +19,72 @@ import (
 // REPOSITORIES - Aggregated from Agent git sources
 // ============================================================================
 
+// isWildcardPattern returns true if the string contains glob wildcard characters.
+func isWildcardPattern(s string) bool {
+	return strings.Contains(s, "*") || strings.Contains(s, "?")
+}
+
+// matchesWildcard checks if a repo name (e.g. "owner/repo") matches a wildcard
+// pattern (e.g. "owner/*") using filepath.Match semantics.
+func matchesWildcard(pattern, name string) bool {
+	matched, err := filepath.Match(pattern, name)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// expandGitHubWildcard resolves a wildcard pattern like "owner/*" into actual
+// repository "owner/repo" strings by listing repos from the GitHub API.
+func (h *Handlers) expandGitHubWildcard(ctx context.Context, token, pattern string) []string {
+	parts := strings.SplitN(pattern, "/", 2)
+	if len(parts) != 2 || token == "" {
+		return nil
+	}
+	owner := parts[0]
+
+	repos, err := h.github.ListOrgRepos(ctx, token, owner)
+	if err != nil {
+		h.log.Warnw("Failed to list GitHub repos for wildcard expansion", "owner", owner, "error", err)
+		return nil
+	}
+
+	var matched []string
+	for _, repo := range repos {
+		if matchesWildcard(pattern, repo.FullName) {
+			matched = append(matched, repo.FullName)
+		}
+	}
+	return matched
+}
+
+// expandGitLabWildcard resolves a wildcard pattern like "owner/*" into actual
+// project paths by listing projects from the GitLab API.
+func (h *Handlers) expandGitLabWildcard(ctx context.Context, token, domain, pattern string) []string {
+	parts := strings.SplitN(pattern, "/", 2)
+	if len(parts) != 2 || token == "" {
+		return nil
+	}
+	owner := parts[0]
+
+	projects, err := h.gitlab.ListUserProjects(ctx, token, domain, owner)
+	if err != nil {
+		h.log.Warnw("Failed to list GitLab projects for wildcard expansion", "owner", owner, "domain", domain, "error", err)
+		return nil
+	}
+
+	var matched []string
+	for _, project := range projects {
+		if matchesWildcard(pattern, project.PathWithNamespace) {
+			matched = append(matched, project.PathWithNamespace)
+		}
+	}
+	return matched
+}
+
 // ListRepos aggregates all repositories from agents with git capabilities
 func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
+	startTotal := time.Now()
 	// Map to deduplicate repos by fullName
 	repoMap := make(map[string]*RepoResponse)
 
@@ -57,9 +124,18 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if config.GitHub != nil {
+			ghToken := getGitHubToken()
 			for _, ghRepo := range config.GitHub.Repositories {
-				// GitHub repos are in "owner/repo" format, normalize to a URL
-				repoURLs = append(repoURLs, repoURL{url: "github.com/" + ghRepo})
+				if isWildcardPattern(ghRepo) {
+					// Expand wildcard via GitHub API
+					expanded := h.expandGitHubWildcard(r.Context(), ghToken, ghRepo)
+					for _, fullName := range expanded {
+						repoURLs = append(repoURLs, repoURL{url: "github.com/" + fullName})
+					}
+				} else {
+					// GitHub repos are in "owner/repo" format, normalize to a URL
+					repoURLs = append(repoURLs, repoURL{url: "github.com/" + ghRepo})
+				}
 			}
 		}
 
@@ -68,9 +144,18 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 			if domain == "" {
 				domain = "gitlab.com"
 			}
+			glToken := getGitLabToken()
 			for _, glProject := range config.GitLab.Projects {
-				// GitLab projects are in "group/project" format, normalize to a URL
-				repoURLs = append(repoURLs, repoURL{url: domain + "/" + glProject})
+				if isWildcardPattern(glProject) {
+					// Expand wildcard via GitLab API
+					expanded := h.expandGitLabWildcard(r.Context(), glToken, domain, glProject)
+					for _, projectPath := range expanded {
+						repoURLs = append(repoURLs, repoURL{url: domain + "/" + projectPath})
+					}
+				} else {
+					// GitLab projects are in "group/project" format, normalize to a URL
+					repoURLs = append(repoURLs, repoURL{url: domain + "/" + glProject})
+				}
 			}
 		}
 
@@ -119,38 +204,53 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Optionally fetch GitHub data for each repo
+	h.log.Infow("ListRepos: capability scan + wildcard expansion done", "repos", len(repoMap), "elapsed", time.Since(startTotal))
+
+	// Fetch activity data for all repos in parallel
+	startActivity := time.Now()
 	token := getGitHubToken()
-	if token != "" {
-		for fullName, repo := range repoMap {
-			if repo.Provider == "github" {
-				activity, err := h.fetchGitHubActivity(r.Context(), token, repo.Owner, repo.Name)
+	glToken := getGitLabToken()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for fullName, repo := range repoMap {
+		if repo.Provider == "github" && token != "" {
+			wg.Add(1)
+			go func(fn string, rp *RepoResponse) {
+				defer wg.Done()
+				start := time.Now()
+				activity, err := h.fetchGitHubActivity(r.Context(), token, rp.Owner, rp.Name)
 				if err != nil {
-					h.log.Warnw("Failed to fetch GitHub activity", "repo", fullName, "error", err)
-					// Continue without activity data
-				} else {
-					repo.Activity = activity
+					h.log.Warnw("Failed to fetch GitHub activity", "repo", fn, "error", err, "elapsed", time.Since(start))
+					return
 				}
-			}
+				h.log.Infow("Fetched GitHub activity", "repo", fn, "elapsed", time.Since(start))
+				mu.Lock()
+				rp.Activity = activity
+				mu.Unlock()
+			}(fullName, repo)
+		} else if repo.Provider == "gitlab" && glToken != "" {
+			wg.Add(1)
+			go func(fn string, rp *RepoResponse) {
+				defer wg.Done()
+				start := time.Now()
+				domain := getGitLabDomainFromURL(rp.URL)
+				activity, err := h.fetchGitLabActivity(r.Context(), glToken, domain, fn)
+				if err != nil {
+					h.log.Warnw("Failed to fetch GitLab activity", "repo", fn, "error", err, "elapsed", time.Since(start))
+					return
+				}
+				h.log.Infow("Fetched GitLab activity", "repo", fn, "elapsed", time.Since(start))
+				mu.Lock()
+				rp.Activity = activity
+				mu.Unlock()
+			}(fullName, repo)
 		}
 	}
 
-	// Optionally fetch GitLab data for each repo
-	glToken := getGitLabToken()
-	if glToken != "" {
-		for fullName, repo := range repoMap {
-			if repo.Provider == "gitlab" {
-				// Determine the GitLab domain from the repo URL
-				domain := getGitLabDomainFromURL(repo.URL)
-				activity, err := h.fetchGitLabActivity(r.Context(), glToken, domain, fullName)
-				if err != nil {
-					h.log.Warnw("Failed to fetch GitLab activity", "repo", fullName, "error", err)
-				} else {
-					repo.Activity = activity
-				}
-			}
-		}
-	}
+	wg.Wait()
+	h.log.Infow("ListRepos: activity fetch done", "elapsed", time.Since(startActivity), "total", time.Since(startTotal))
 
 	// Convert map to slice
 	repos := make([]RepoResponse, 0, len(repoMap))
@@ -612,11 +712,25 @@ type repoProviderInfo struct {
 
 // detectRepoProvider looks up the provider, domain, and full project path for a repo
 // identified by owner/name from the capabilities configuration.
+// Returns nil if the repo is not declared in any capability — callers should
+// treat a nil result as "not found / not allowed".
+// Supports wildcard patterns (e.g. "owner/*") in capability config.
+// For wildcard matches, verifies the repo actually exists on the provider.
 func (h *Handlers) detectRepoProvider(ctx context.Context, owner, name string) *repoProviderInfo {
 	capabilities, err := h.k8s.ListCapabilities(ctx, "")
 	if err != nil {
 		return nil
 	}
+
+	fullName := owner + "/" + name
+
+	// Collect candidates from wildcard matches (need verification)
+	// and return immediately for exact matches (already known to be correct).
+	type candidate struct {
+		info     repoProviderInfo
+		wildcard bool
+	}
+	var candidates []candidate
 
 	for _, capability := range capabilities {
 		if capability.Spec.Container == nil || capability.Spec.Container.Config == nil {
@@ -628,27 +742,48 @@ func (h *Handlers) detectRepoProvider(ctx context.Context, owner, name string) *
 		// Check GitHub config
 		if config.GitHub != nil {
 			for _, ghRepo := range config.GitHub.Repositories {
-				parsed := parseRepoURL("github.com/" + ghRepo)
-				if parsed != nil && parsed.Owner == owner && parsed.Name == name {
-					return &repoProviderInfo{Provider: "github"}
+				if isWildcardPattern(ghRepo) {
+					if matchesWildcard(ghRepo, fullName) {
+						candidates = append(candidates, candidate{
+							info:     repoProviderInfo{Provider: "github"},
+							wildcard: true,
+						})
+					}
+				} else {
+					parsed := parseRepoURL("github.com/" + ghRepo)
+					if parsed != nil && parsed.Owner == owner && parsed.Name == name {
+						return &repoProviderInfo{Provider: "github"}
+					}
 				}
 			}
 		}
 
-		// Check GitLab config - match on owner prefix
+		// Check GitLab config
 		if config.GitLab != nil {
 			domain := config.GitLab.Domain
 			if domain == "" {
 				domain = "gitlab.com"
 			}
 			for _, glProject := range config.GitLab.Projects {
-				// Parse just like ListRepos does — it will truncate to owner/name
-				parsed := parseRepoURL(domain + "/" + glProject)
-				if parsed != nil && parsed.Owner == owner && parsed.Name == name {
-					return &repoProviderInfo{
-						Provider:    "gitlab",
-						Domain:      domain,
-						ProjectPath: glProject,
+				if isWildcardPattern(glProject) {
+					if matchesWildcard(glProject, fullName) {
+						candidates = append(candidates, candidate{
+							info: repoProviderInfo{
+								Provider:    "gitlab",
+								Domain:      domain,
+								ProjectPath: fullName,
+							},
+							wildcard: true,
+						})
+					}
+				} else {
+					parsed := parseRepoURL(domain + "/" + glProject)
+					if parsed != nil && parsed.Owner == owner && parsed.Name == name {
+						return &repoProviderInfo{
+							Provider:    "gitlab",
+							Domain:      domain,
+							ProjectPath: glProject,
+						}
 					}
 				}
 			}
@@ -665,8 +800,34 @@ func (h *Handlers) detectRepoProvider(ctx context.Context, owner, name string) *
 		}
 	}
 
-	// Default to GitHub for backward compatibility
-	return &repoProviderInfo{Provider: "github"}
+	// For wildcard candidates, verify the repo actually exists on the provider.
+	// This avoids misidentifying e.g. a GitLab-only repo as GitHub when both
+	// capabilities use the same wildcard pattern.
+	for _, c := range candidates {
+		switch c.info.Provider {
+		case "github":
+			token := getGitHubToken()
+			if token != "" {
+				_, err := h.github.GetRepository(ctx, token, owner, name)
+				if err == nil {
+					info := c.info
+					return &info
+				}
+			}
+		case "gitlab":
+			token := getGitLabToken()
+			if token != "" {
+				_, err := h.gitlab.GetProject(ctx, token, c.info.Domain, fullName)
+				if err == nil {
+					info := c.info
+					return &info
+				}
+			}
+		}
+	}
+
+	// Repo not found in any capability — deny access
+	return nil
 }
 
 // GetRepoContents returns the files and directories at a path in a repository
@@ -683,9 +844,13 @@ func (h *Handlers) GetRepoContents(w http.ResponseWriter, r *http.Request) {
 	path = strings.TrimPrefix(path, "/")
 
 	info := h.detectRepoProvider(r.Context(), owner, name)
+	if info == nil {
+		jsonError(w, http.StatusNotFound, "Repository not found in any capability")
+		return
+	}
 	h.log.Infow("detectRepoProvider result", "owner", owner, "name", name, "provider", info.Provider, "domain", info.Domain, "projectPath", info.ProjectPath)
 
-	if info != nil && info.Provider == "gitlab" {
+	if info.Provider == "gitlab" {
 		glToken := getGitLabToken()
 		if glToken == "" {
 			jsonError(w, http.StatusUnauthorized, "GitLab token not configured")
@@ -760,8 +925,12 @@ func (h *Handlers) GetFileContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := h.detectRepoProvider(r.Context(), owner, name)
+	if info == nil {
+		jsonError(w, http.StatusNotFound, "Repository not found in any capability")
+		return
+	}
 
-	if info != nil && info.Provider == "gitlab" {
+	if info.Provider == "gitlab" {
 		glToken := getGitLabToken()
 		if glToken == "" {
 			jsonError(w, http.StatusUnauthorized, "GitLab token not configured")
@@ -834,9 +1003,13 @@ func (h *Handlers) GetRepoDetail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	info := h.detectRepoProvider(r.Context(), owner, name)
+	if info == nil {
+		jsonError(w, http.StatusNotFound, "Repository not found in any capability")
+		return
+	}
 	h.log.Infow("GetRepoDetail provider detection", "owner", owner, "name", name, "provider", info.Provider, "domain", info.Domain, "projectPath", info.ProjectPath)
 
-	if info != nil && info.Provider == "gitlab" {
+	if info.Provider == "gitlab" {
 		h.getGitLabRepoDetail(w, r, info)
 		return
 	}
