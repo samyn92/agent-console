@@ -49,6 +49,114 @@ function tone(palette: TonalPalette, t: number): string {
  * Vercel theme with Material You colors.
  */
 export function generateMaterialTheme(seedHex: string): MaterialColors {
+  const hex = seedHex.toLowerCase();
+
+  // ------------------------------------------------------------------
+  // OVERRIDE: Classic Vercel Default (#ffffff)
+  // Maps to original Vercel Black/White primary with Blue accent
+  // ------------------------------------------------------------------
+  if (hex === "#ffffff") {
+    return {
+      light: {
+        "--bg-main": "#ffffff",
+        "--bg-secondary": "#fafafa",
+        "--bg-tertiary": "#f5f5f5",
+        "--bg-hover": "#ebebeb",
+        "--border-main": "#e5e5e5",
+        "--border-hover": "#999999",
+        "--border-subtle": "#f0f0f0",
+        "--text-main": "#171717",
+        "--text-secondary": "#525252",
+        "--text-muted": "#737373",
+        "--primary": "#171717",
+        "--primary-foreground": "#ffffff",
+        "--primary-hover": "#404040",
+        "--primary-light": "#f5f5f5",
+        "--success": "#22c55e",
+        "--warning": "#eab308",
+        "--error": "#ef4444",
+        "--info": "#3b82f6",
+        "--accent": "#3b82f6",
+        "--accent-muted": "#3b82f620",
+      },
+      dark: {
+        "--bg-main": "#09090b",
+        "--bg-secondary": "#0c0c0e",
+        "--bg-tertiary": "#18181b",
+        "--bg-hover": "#222225",
+        "--border-main": "#27272a",
+        "--border-hover": "#3f3f46",
+        "--border-subtle": "#1e1e22",
+        "--text-main": "#fafafa",
+        "--text-secondary": "#a1a1aa",
+        "--text-muted": "#71717a",
+        "--primary": "#fafafa",
+        "--primary-foreground": "#09090b",
+        "--primary-hover": "#d4d4d8",
+        "--primary-light": "#18181b",
+        "--success": "#22c55e",
+        "--warning": "#eab308",
+        "--error": "#ef4444",
+        "--info": "#3b82f6",
+        "--accent": "#3b82f6",
+        "--accent-muted": "#3b82f618",
+      },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // OVERRIDE: Pure Neutral (#171717)
+  // Maps to pure grayscale for everything
+  // ------------------------------------------------------------------
+  if (hex === "#171717") {
+    return {
+      light: {
+        "--bg-main": "#ffffff",
+        "--bg-secondary": "#fafafa",
+        "--bg-tertiary": "#f5f5f5",
+        "--bg-hover": "#ebebeb",
+        "--border-main": "#e5e5e5",
+        "--border-hover": "#999999",
+        "--border-subtle": "#f0f0f0",
+        "--text-main": "#171717",
+        "--text-secondary": "#525252",
+        "--text-muted": "#737373",
+        "--primary": "#171717",
+        "--primary-foreground": "#ffffff",
+        "--primary-hover": "#404040",
+        "--primary-light": "#f5f5f5",
+        "--success": "#22c55e",
+        "--warning": "#eab308",
+        "--error": "#ef4444",
+        "--info": "#171717",
+        "--accent": "#171717",
+        "--accent-muted": "#17171720",
+      },
+      dark: {
+        "--bg-main": "#09090b",
+        "--bg-secondary": "#0c0c0e",
+        "--bg-tertiary": "#18181b",
+        "--bg-hover": "#222225",
+        "--border-main": "#27272a",
+        "--border-hover": "#3f3f46",
+        "--border-subtle": "#1e1e22",
+        "--text-main": "#fafafa",
+        "--text-secondary": "#a1a1aa",
+        "--text-muted": "#71717a",
+        "--primary": "#fafafa",
+        "--primary-foreground": "#09090b",
+        "--primary-hover": "#d4d4d8",
+        "--primary-light": "#18181b",
+        "--success": "#22c55e",
+        "--warning": "#eab308",
+        "--error": "#ef4444",
+        "--info": "#fafafa",
+        "--accent": "#fafafa",
+        "--accent-muted": "#fafafa18",
+      },
+    };
+  }
+
   const theme = themeFromSourceColor(argbFromHex(seedHex));
 
   // Extract the 5 tonal palettes (already TonalPalette instances)
@@ -168,5 +276,5 @@ export function clearMaterialColors(
   }
 }
 
-/** Default Material You seed color: Google's classic purple */
-export const DEFAULT_SEED_COLOR = "#6750A4";
+/** Default Material You seed color: Vercel classic white/blue default */
+export const DEFAULT_SEED_COLOR = "#ffffff";

@@ -85,13 +85,25 @@ function createThemeStore() {
     }
 
     // Apply or clear Material You colors
+    const colors = getMaterialColors(accent);
+    const currentColors = effectiveTheme === "dark" ? colors.dark : colors.light;
+
     if (design === "material") {
-      const colors = getMaterialColors(accent);
-      applyMaterialColors(effectiveTheme === "dark" ? colors.dark : colors.light, root);
+      applyMaterialColors(currentColors, root);
       root.classList.add("material");
     } else {
       clearMaterialColors(root);
       root.classList.remove("material");
+      root.style.setProperty("--accent", currentColors["--accent"]);
+      root.style.setProperty("--accent-muted", currentColors["--accent-muted"]);
+      root.style.setProperty("--primary", currentColors["--primary"]);
+      root.style.setProperty("--primary-hover", currentColors["--primary-hover"]);
+      root.style.setProperty("--primary-light", currentColors["--primary-light"]);
+      root.style.setProperty("--primary-foreground", currentColors["--primary-foreground"]);
+      root.style.setProperty("--success", currentColors["--success"]);
+      root.style.setProperty("--warning", currentColors["--warning"]);
+      root.style.setProperty("--error", currentColors["--error"]);
+      root.style.setProperty("--info", currentColors["--info"]);
     }
   });
 
@@ -115,9 +127,22 @@ function createThemeStore() {
         }
 
         // Reapply Material colors for the new effective theme
+        const colors = getMaterialColors(accentColor());
+        const currentColors = system === "dark" ? colors.dark : colors.light;
         if (designTheme() === "material") {
-          const colors = getMaterialColors(accentColor());
-          applyMaterialColors(system === "dark" ? colors.dark : colors.light, root);
+          applyMaterialColors(currentColors, root);
+        } else {
+          clearMaterialColors(root);
+          root.style.setProperty("--accent", currentColors["--accent"]);
+          root.style.setProperty("--accent-muted", currentColors["--accent-muted"]);
+          root.style.setProperty("--primary", currentColors["--primary"]);
+          root.style.setProperty("--primary-hover", currentColors["--primary-hover"]);
+          root.style.setProperty("--primary-light", currentColors["--primary-light"]);
+          root.style.setProperty("--primary-foreground", currentColors["--primary-foreground"]);
+          root.style.setProperty("--success", currentColors["--success"]);
+          root.style.setProperty("--warning", currentColors["--warning"]);
+          root.style.setProperty("--error", currentColors["--error"]);
+          root.style.setProperty("--info", currentColors["--info"]);
         }
       }
     };

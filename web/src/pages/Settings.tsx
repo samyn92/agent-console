@@ -6,7 +6,6 @@ import {
 } from "solid-icons/fi";
 import { themeStore } from "../stores/theme";
 import { settingsStore } from "../stores/settings";
-import { DEFAULT_SEED_COLOR } from "../lib/material-theme";
 
 // Settings store (in a real app, this would persist to localStorage or API)
 const [settings, setSettings] = createSignal({
@@ -117,6 +116,9 @@ const Select: Component<{
 
 // Preset accent colors for Material You
 const ACCENT_PRESETS = [
+  { color: "#ffffff", label: "Vercel (Default)" },
+  { color: "#0070F3", label: "Vercel Blue" },
+  { color: "#171717", label: "Neutral" },
   { color: "#6750A4", label: "Purple" },
   { color: "#006A6A", label: "Teal" },
   { color: "#0061A4", label: "Blue" },
@@ -217,7 +219,7 @@ const SettingsPage: Component = () => {
                     <div class="flex-1 bg-[#09090b] p-1.5">
                       <div class="w-3/4 h-1 bg-[#27272a] rounded mb-1" />
                       <div class="w-1/2 h-1 bg-[#27272a] rounded mb-1" />
-                      <div class="w-2/3 h-1 bg-[#3b82f6]/40 rounded" />
+                      <div class="w-2/3 h-1 rounded" style={{ "background-color": "var(--accent-muted)" }} />
                     </div>
                   </div>
                 </div>
@@ -247,14 +249,14 @@ const SettingsPage: Component = () => {
               <div class="w-full h-20 rounded-lg overflow-hidden border border-border/50">
                 <div class="h-full flex flex-col">
                   <div class="h-3 bg-[#1c1b1f] flex items-center px-1">
-                    <div class="w-4 h-1 bg-[#6750A4] rounded-full" />
+                    <div class="w-4 h-1 rounded-full" style={{ "background-color": "var(--primary)" }} />
                   </div>
                   <div class="flex-1 flex">
                     <div class="w-1/4 bg-[#1c1b1f] border-r border-[#49454f]" />
                     <div class="flex-1 bg-[#141218] p-1.5">
                       <div class="w-3/4 h-1 bg-[#49454f] rounded-full mb-1" />
                       <div class="w-1/2 h-1 bg-[#49454f] rounded-full mb-1" />
-                      <div class="w-2/3 h-1 bg-[#D0BCFF]/40 rounded-full" />
+                      <div class="w-2/3 h-1 rounded-full" style={{ "background-color": "var(--accent-muted)" }} />
                     </div>
                   </div>
                 </div>
@@ -274,13 +276,12 @@ const SettingsPage: Component = () => {
           </div>
         </div>
 
-        {/* Accent Color — only shown for Material You */}
-        <Show when={designTheme() === "material"}>
-          <div class="mt-4 pt-4 border-t border-border">
-            <div class="flex items-center justify-between mb-3">
+        {/* Accent Color */}
+        <div class="mt-4 pt-4 border-t border-border">
+          <div class="flex items-center justify-between mb-3">
               <div>
                 <p class="text-sm font-semibold text-text">Accent Color</p>
-                <p class="text-xs text-text-secondary mt-0.5">Pick a seed color for the Material You palette</p>
+                <p class="text-xs text-text-secondary mt-0.5">Pick a seed color for the system palette</p>
               </div>
               <div class="flex items-center gap-2">
                 <div
@@ -317,13 +318,12 @@ const SettingsPage: Component = () => {
               </For>
             </div>
             <button
-              onClick={() => setAccentColor(DEFAULT_SEED_COLOR)}
+              onClick={() => setAccentColor("#ffffff")}
               class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
             >
               Reset to default
             </button>
           </div>
-        </Show>
 
         {/* Light/Dark Mode */}
         <div class="mt-4 pt-4 border-t border-border">
