@@ -3,7 +3,7 @@ import {
   FiCpu, FiChevronDown, FiChevronRight, FiTool,
   FiTerminal, FiFileText, FiEdit, FiSearch, FiGlobe, FiUsers,
   FiEye, FiFile, FiCheck, FiX, FiLayers,
-  FiShield, FiServer, FiBox, FiAlertTriangle, FiSlash,
+  FiShield, FiServer, FiBox,
 } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
