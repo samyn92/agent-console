@@ -777,8 +777,10 @@ const MainApp = () => {
                 isDraft={!sessionStore.state.activeSessionId && sessionStore.state.isDraftChat}
                 selectedContexts={selectedContexts()}
                 onRemoveContext={toggleContext}
+                onToggleContext={toggleContext}
                 agent={activeAgent()!}
                 capabilities={capabilities()}
+                repos={repos() || []}
               />
             )}
           </Show>

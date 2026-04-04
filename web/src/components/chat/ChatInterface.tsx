@@ -7,6 +7,7 @@ import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
 import type { PendingQuestion } from "./QuestionPanel";
 import ContextPill from "./ContextPill";
+import ResourceBrowserPopover from "./ResourceBrowserPopover";
 import { parseContextFromMessage } from "./ContextBar";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
@@ -107,8 +108,10 @@ interface ChatInterfaceProps {
   onToolPartsUpdate?: (toolParts: ToolPart[]) => void;
   selectedContexts?: SelectedContext[];
   onRemoveContext?: (ctx: SelectedContext) => void;
+  onToggleContext?: (ctx: SelectedContext) => void;
   agent?: AgentResponse;
   capabilities?: CapabilityResponse[];
+  repos?: import("../../lib/api").RepoResponse[];
 }
 
 /** Renders a single MessagePart inline in the chat.
@@ -1387,7 +1390,14 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
             class="w-full px-3.5 pt-3 pb-1.5 text-sm leading-5 bg-transparent text-text placeholder-text-muted resize-none focus:outline-none min-h-[36px] max-h-[160px]"
           />
           <div class={`flex items-center justify-between px-3 pb-2.5 ${mobileStore.state.isMobile ? "pb-[max(0.625rem,env(safe-area-inset-bottom))]" : ""}`}>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1.5">
+              <ResourceBrowserPopover
+                agent={props.agent}
+                capabilities={props.capabilities}
+                repos={props.repos}
+                selectedContexts={props.selectedContexts || []}
+                onToggleContext={props.onToggleContext || (() => {})}
+              />
               <Show when={!isStreaming() && !mobileStore.state.isMobile}>
                 <span class="text-xs text-text-muted/50 flex items-center gap-1">
                   <FiCornerDownLeft class="w-2.5 h-2.5" />

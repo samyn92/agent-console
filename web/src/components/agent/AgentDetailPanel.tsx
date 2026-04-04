@@ -2,11 +2,10 @@ import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
 import {
   FiCpu, FiChevronDown, FiChevronRight, FiTool,
   FiTerminal, FiFileText, FiEdit, FiSearch, FiGlobe, FiUsers,
-  FiEye, FiFile, FiCheck, FiX,
+  FiEye, FiFile, FiCheck,
 } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
-import { getContextLabel } from "../chat/ContextBar";
 import {
   detectToolCategory,
   toolThemes,
@@ -16,15 +15,8 @@ import {
 import {
   accentMap,
   capabilityMeta,
-  InlineK8sBrowser,
-  InlineHelmBrowser,
-  InlineGitHubBrowser,
-  InlineGitLabBrowser,
-  PermissionsView,
-  StatusView,
-  CapabilityTabButton,
 } from "../sources/CapabilityBrowser";
-import type { CapabilityType, CapabilityTab, CapabilityInfo } from "../sources/CapabilityBrowser";
+import type { CapabilityType, CapabilityInfo } from "../sources/CapabilityBrowser";
 
 // =============================================================================
 // TOOL ICON MAP
@@ -83,8 +75,6 @@ interface AgentDetailPanelProps {
 const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
   const [selectorOpen, setSelectorOpen] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal("");
-  const [expandedCapability, setExpandedCapability] = createSignal<CapabilityType | null>(null);
-  const [activeCapTab, setActiveCapTab] = createSignal<CapabilityTab>("browse");
   let dropdownRef: HTMLDivElement | undefined;
   let searchInputRef: HTMLInputElement | undefined;
 
@@ -153,37 +143,6 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
       }
     }
     return result;
-  };
-
-  const toggleCapability = (type: CapabilityType) => {
-    if (expandedCapability() === type) {
-      setExpandedCapability(null);
-    } else {
-      setExpandedCapability(type);
-      setActiveCapTab("browse");
-    }
-  };
-
-  const selectedCount = (type: CapabilityType) => {
-    if (!props.selectedContexts) return 0;
-    return props.selectedContexts.filter(c => {
-      if (type === "kubernetes") return c.type === "k8s-resource";
-      if (type === "helm") return c.type === "helm-release";
-      if (type === "github") return c.type === "github-path";
-      if (type === "gitlab") return c.type === "gitlab-path";
-      return false;
-    }).length;
-  };
-
-  const contextsByType = (type: CapabilityType) => {
-    if (!props.selectedContexts) return [];
-    return props.selectedContexts.filter(c => {
-      if (type === "kubernetes") return c.type === "k8s-resource";
-      if (type === "helm") return c.type === "helm-release";
-      if (type === "github") return c.type === "github-path";
-      if (type === "gitlab") return c.type === "gitlab-path";
-      return false;
-    });
   };
 
   return (
@@ -343,25 +302,19 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
       <Show when={!selectorOpen()}>
         {/* Compact info bar: capability badges + system prompt toggle */}
         <div class="border-t border-border px-3 py-1.5 space-y-1.5">
-          {/* Capability badges row */}
+          {/* Capability status badges (read-only — browsing is in the composer popover) */}
           <Show when={detectedCapabilities().length > 0}>
             <div class="flex items-center gap-1.5 flex-wrap">
               <For each={detectedCapabilities()}>
                 {(info) => {
                   const accent = () => accentMap[info.type];
                   const meta = () => capabilityMeta[info.type];
-                  const isExpanded = () => expandedCapability() === info.type;
                   const Icon = meta().icon;
                   const phase = () => info.capability?.status?.phase || "Unknown";
 
                   return (
-                    <button
-                      onClick={() => toggleCapability(info.type)}
-                      class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
-                        isExpanded()
-                          ? `${accent().borderActive} bg-gradient-to-br ${accent().bg} shadow-sm`
-                          : `${accent().border} hover:${accent().bg} bg-transparent`
-                      }`}
+                    <span
+                      class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border ${accent().border} bg-transparent`}
                     >
                       <Icon class={`w-3.5 h-3.5 ${accent().iconColor}`} />
                       <span class="text-text">{meta().label}</span>
@@ -371,21 +324,10 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
                       <Show when={phase() === "Failed"}>
                         <span class="w-1.5 h-1.5 rounded-full bg-error" />
                       </Show>
-                      <Show when={selectedCount(info.type) > 0}>
-                        <span class={`text-[9px] font-bold px-1 py-0.5 rounded-full leading-none ${accent().badge}`}>
-                          {selectedCount(info.type)}
-                        </span>
-                      </Show>
-                    </button>
+                    </span>
                   );
                 }}
               </For>
-              {/* Total selected count */}
-              <Show when={props.selectedContexts && props.selectedContexts.length > 0}>
-                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold ml-auto">
-                  {props.selectedContexts!.length} sel.
-                </span>
-              </Show>
             </div>
           </Show>
 
@@ -406,112 +348,8 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
           </Show>
         </div>
 
-        {/* Expanded capability browser (appears below badges when one is selected) */}
-        <Show when={expandedCapability()}>
-          <div class="border-t border-border">
-            <For each={detectedCapabilities()}>
-              {(info) => {
-                const isExpanded = () => expandedCapability() === info.type;
-
-                return (
-                  <Show when={isExpanded()}>
-                    <div>
-                      {/* Tab Bar */}
-                      <div class="flex items-center border-b border-border/50 bg-surface/30">
-                        <CapabilityTabButton
-                          label="Browse"
-                          active={activeCapTab() === "browse"}
-                          onClick={() => setActiveCapTab("browse")}
-                          type={info.type}
-                        />
-                        <CapabilityTabButton
-                          label="Permissions"
-                          active={activeCapTab() === "permissions"}
-                          onClick={() => setActiveCapTab("permissions")}
-                          type={info.type}
-                        />
-                        <CapabilityTabButton
-                          label="Status"
-                          active={activeCapTab() === "status"}
-                          onClick={() => setActiveCapTab("status")}
-                          type={info.type}
-                        />
-                      </div>
-
-                      {/* Tab Content */}
-                      <div class="max-h-[40vh] overflow-y-auto scrollbar-thin">
-                        <Show when={activeCapTab() === "browse"}>
-                          <Show when={props.onToggleSelect}>
-                            <Show when={info.type === "kubernetes"}>
-                              <InlineK8sBrowser
-                                onToggleSelect={props.onToggleSelect!}
-                                selectedContexts={props.selectedContexts || []}
-                              />
-                            </Show>
-                            <Show when={info.type === "helm"}>
-                              <InlineHelmBrowser
-                                onToggleSelect={props.onToggleSelect!}
-                                selectedContexts={props.selectedContexts || []}
-                              />
-                            </Show>
-                            <Show when={info.type === "github"}>
-                              <InlineGitHubBrowser
-                                repos={(props.repos || []).filter(r => r.provider === "github")}
-                                onToggleSelect={props.onToggleSelect!}
-                                selectedContexts={props.selectedContexts || []}
-                              />
-                            </Show>
-                            <Show when={info.type === "gitlab"}>
-                              <InlineGitLabBrowser
-                                repos={(props.repos || []).filter(r => r.provider === "gitlab")}
-                                onToggleSelect={props.onToggleSelect!}
-                                selectedContexts={props.selectedContexts || []}
-                              />
-                            </Show>
-                          </Show>
-                          <Show when={!props.onToggleSelect}>
-                            <div class="text-center py-6">
-                              <p class="text-xs text-text-muted">Resource browsing not available</p>
-                            </div>
-                          </Show>
-                        </Show>
-
-                        <Show when={activeCapTab() === "permissions"}>
-                          <PermissionsView capability={info.capability} />
-                        </Show>
-
-                        <Show when={activeCapTab() === "status"}>
-                          <StatusView capability={info.capability} />
-                        </Show>
-                      </div>
-
-                      {/* Selected items for this capability */}
-                      <Show when={contextsByType(info.type).length > 0 && props.onToggleSelect}>
-                        <div class="border-t border-border/30 py-1">
-                          <For each={contextsByType(info.type)}>
-                            {(ctx) => (
-                              <div class="group/row flex items-center gap-2 pl-4 pr-3 py-[3px] hover:bg-surface-hover/40 transition-colors">
-                                <span class="text-xs text-text/70 truncate flex-1 tracking-tight" title={getContextLabel(ctx)}>
-                                  {getContextLabel(ctx)}
-                                </span>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); props.onToggleSelect!(ctx); }}
-                                  class="p-0.5 rounded text-transparent group-hover/row:text-text-muted hover:!text-error transition-all shrink-0"
-                                >
-                                  <FiX class="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </For>
-                        </div>
-                      </Show>
-                    </div>
-                  </Show>
-                );
-              }}
-            </For>
-          </div>
-        </Show>
+        {/* Expanded capability browser removed — browsing now lives in the
+            ResourceBrowserPopover next to the chat composer. */}
       </Show>
     </div>
   );
