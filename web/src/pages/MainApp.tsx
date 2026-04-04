@@ -223,37 +223,11 @@ const MainApp = () => {
   // =========================================================================
   const leftPanel = () => (
     <>
-      {/* --- Agent Detail Panel (top, with dropdown selector) --- */}
-      <Show
-        when={agents() && activeAgent()}
-        fallback={
-          <div class="shrink-0 border-b border-border px-3 py-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-lg bg-surface-2 flex items-center justify-center">
-                <FiCpu class="w-4 h-4 text-text-muted" />
-              </div>
-              <span class="text-sm text-text-muted">Loading agents...</span>
-            </div>
-          </div>
-        }
-      >
-        <AgentDetailPanel
-          agent={activeAgent()!}
-          agents={agents()!}
-          onSelectAgent={selectAgent}
-          capabilities={capabilities() || []}
-          loading={agents.loading}
-          selectedContexts={selectedContexts()}
-          onToggleSelect={toggleContext}
-          repos={repos() || []}
-        />
-      </Show>
-
-      {/* --- Tab switcher: Chats | Workflows --- */}
-      <nav class="shrink-0 flex border-b border-border" role="tablist" aria-label="Sidebar navigation">
+      {/* --- Primary tab switcher: Chats | Workflows (top-level paradigm switch) --- */}
+      <nav class="shrink-0 flex bg-surface border-b border-border" role="tablist" aria-label="Primary navigation">
         <button
           onClick={() => setSidebarTab("chats")}
-          class={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors relative cursor-pointer ${
+          class={`flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-semibold transition-colors relative cursor-pointer ${
             sidebarTab() === "chats"
               ? "text-text"
               : "text-text-muted hover:text-text-secondary"
@@ -262,15 +236,15 @@ const MainApp = () => {
           aria-selected={sidebarTab() === "chats"}
           aria-controls="panel-chats"
         >
-          <FiMessageSquare class="w-3 h-3" />
+          <FiMessageSquare class="w-4 h-4" />
           <span>Chats</span>
           <Show when={sidebarTab() === "chats"}>
-            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-primary rounded-full" />
+            <div class="tab-active-indicator" />
           </Show>
         </button>
         <button
           onClick={() => setSidebarTab("workflows")}
-          class={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors relative cursor-pointer ${
+          class={`flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-semibold transition-colors relative cursor-pointer ${
             sidebarTab() === "workflows"
               ? "text-text"
               : "text-text-muted hover:text-text-secondary"
@@ -279,25 +253,53 @@ const MainApp = () => {
           aria-selected={sidebarTab() === "workflows"}
           aria-controls="panel-workflows"
         >
-          <FiZap class="w-3 h-3" />
+          <FiZap class="w-4 h-4" />
           <span>Workflows</span>
           <Show when={sidebarTab() === "workflows"}>
-            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-primary rounded-full" />
+            <div class="tab-active-indicator" />
           </Show>
         </button>
       </nav>
+
+      {/* --- Agent Detail Panel (only visible in Chats mode) --- */}
+      <Show when={sidebarTab() === "chats"}>
+        <Show
+          when={agents() && activeAgent()}
+          fallback={
+            <div class="shrink-0 border-b border-border px-3 py-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-lg bg-surface-2 flex items-center justify-center">
+                  <FiCpu class="w-4 h-4 text-text-muted" />
+                </div>
+                <span class="text-sm text-text-muted">Loading agents...</span>
+              </div>
+            </div>
+          }
+        >
+          <AgentDetailPanel
+            agent={activeAgent()!}
+            agents={agents()!}
+            onSelectAgent={selectAgent}
+            capabilities={capabilities() || []}
+            loading={agents.loading}
+            selectedContexts={selectedContexts()}
+            onToggleSelect={toggleContext}
+            repos={repos() || []}
+          />
+        </Show>
+      </Show>
 
       {/* --- Tab content (middle, grows) --- */}
       <div class="flex-1 min-h-0 overflow-y-auto">
         <Show when={sidebarTab() === "chats"}>
           {/* Recent Chats tab */}
           <div id="panel-chats" role="tabpanel">
-            <div class="flex items-center justify-between px-3 py-2">
-              <span class="section-label">Recent Chats</span>
-              <div class="flex items-center gap-1">
+            <div class="flex items-center justify-between px-4 pt-3 pb-2">
+              <span class="text-[11px] font-semibold uppercase tracking-widest text-text-muted/70">Recent Chats</span>
+              <div class="flex items-center gap-0.5">
                 <button
                   onClick={startNewChat}
-                  class="p-1.5 text-text-muted hover:text-text hover:bg-surface-hover rounded-md transition-colors cursor-pointer"
+                  class="p-1.5 text-text-muted/60 hover:text-text hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
                   title="New chat"
                   aria-label="Start new chat"
                 >
@@ -305,7 +307,7 @@ const MainApp = () => {
                 </button>
                 <button
                   onClick={handleRefresh}
-                  class="p-1.5 text-text-muted hover:text-text hover:bg-surface-hover rounded-md transition-colors cursor-pointer"
+                  class="p-1.5 text-text-muted/60 hover:text-text hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
                   title="Refresh chats"
                   aria-label="Refresh chat list"
                 >
@@ -314,13 +316,16 @@ const MainApp = () => {
               </div>
             </div>
 
-            <div class="px-1.5 pb-2" role="list" aria-label="Chat sessions">
+            <div class="px-2 pb-2" role="list" aria-label="Chat sessions">
               <Show when={!sessionStore.state.loading}>
                 <For each={groupedSessions()}>
                   {(group) => (
                     <>
-                      <div class="px-2 pt-2 pb-1 first:pt-0" role="presentation">
-                        <span class="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{group.label}</span>
+                      <div class="px-2 pt-3 pb-1.5 first:pt-1" role="presentation">
+                        <div class="flex items-center gap-2">
+                          <span class="text-[10px] font-bold uppercase tracking-widest text-text-muted/50">{group.label}</span>
+                          <div class="flex-1 h-px bg-border/40" />
+                        </div>
                       </div>
                       <For each={group.sessions}>
                         {(session) => {
@@ -399,15 +404,15 @@ const MainApp = () => {
                                 : ""
                             } ${
                               isActive()
-                                ? "bg-primary/[0.08] shadow-sm ring-1 ring-border/50 z-10"
-                                : "hover:bg-surface-hover text-text-muted"
+                                ? "bg-primary/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.08)] ring-1 ring-primary/20 z-10"
+                                : "hover:bg-surface-hover/70 text-text-muted"
                             }`}
                             role="listitem"
                             aria-current={isActive() ? "true" : undefined}
                             aria-label={`Chat: ${formatSessionTitle(session.title)}`}
                           >
-                            <div class={`absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full transition-colors ${accentColor()}`} />
-                            <div class="flex items-start gap-2.5 pl-2 pr-2.5 py-2 w-full">
+                            <div class={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full transition-colors duration-200 ${accentColor()}`} />
+                            <div class="flex items-start gap-2.5 pl-2.5 pr-3 py-2.5 w-full">
                               {/* Left indicator */}
                               <div class="flex items-center justify-center w-4 h-4 mt-0.5 shrink-0">
                                 {leftIndicator()}
@@ -415,25 +420,25 @@ const MainApp = () => {
                               {/* Content */}
                               <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-1.5">
-                                  <p class={`text-sm truncate leading-snug flex-1 ${
+                                  <p class={`text-[13px] truncate leading-snug flex-1 ${
                                     isActive() ? "text-text font-medium"
                                       : isUnseen() ? "text-text font-semibold"
-                                      : "text-text-secondary"
+                                      : "text-text-secondary group-hover:text-text"
                                   }`}>
                                     {formatSessionTitle(session.title)}
                                   </p>
                                   {/* Unseen dot */}
                                   <Show when={isUnseen() && !isActive()}>
-                                    <span class="w-2 h-2 rounded-full bg-accent shrink-0" />
+                                    <span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
                                   </Show>
                                 </div>
                                 {/* Status + file changes */}
                                 <div class="flex items-center gap-2 mt-0.5">
-                                  <span class="text-[10px] text-text-muted tabular-nums">
+                                  <span class="text-[10px] text-text-muted/70 tabular-nums">
                                     {statusLine()}
                                   </span>
                                   <Show when={summary() && summary()!.files > 0}>
-                                    <span class="text-[10px] font-mono flex items-center gap-1 text-text-muted">
+                                    <span class="text-[10px] font-mono flex items-center gap-1 text-text-muted/70">
                                       <FiGitCommit class="w-2.5 h-2.5" />
                                       <span class="text-emerald-400">+{summary()!.additions}</span>
                                       <span class="text-red-400">-{summary()!.deletions}</span>
@@ -470,15 +475,15 @@ const MainApp = () => {
       </div>
 
       {/* --- Footer --- */}
-      <footer class="shrink-0 border-t border-border">
-        <div class="flex items-center gap-1 px-2 py-1.5">
+      <footer class="shrink-0 border-t border-border/60 bg-surface/50">
+        <div class="flex items-center gap-1 px-2.5 py-2">
           {/* Panel toggle (desktop) / Close drawer (mobile) */}
           <Show
             when={!mobileStore.state.isMobile}
             fallback={
               <button
                 onClick={() => mobileStore.closeDrawer()}
-                class="p-1.5 text-text-muted hover:text-text-secondary rounded transition-colors cursor-pointer"
+                class="p-1.5 text-text-muted/60 hover:text-text-secondary hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
                 title="Close drawer"
                 aria-label="Close navigation drawer"
               >
@@ -488,7 +493,7 @@ const MainApp = () => {
           >
             <button
               onClick={panelStore.toggleLeft}
-              class="p-1.5 text-text-muted hover:text-text-secondary rounded transition-colors cursor-pointer"
+              class="p-1.5 text-text-muted/60 hover:text-text-secondary hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
               title="Toggle left panel"
               aria-label="Toggle left panel"
             >
@@ -498,7 +503,7 @@ const MainApp = () => {
           <div class="flex-1" />
           <A
             href="/settings"
-            class="flex items-center gap-2 px-2.5 py-1.5 text-sm text-text-muted hover:text-text-secondary hover:bg-surface-hover rounded-md transition-colors"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-muted/70 hover:text-text-secondary hover:bg-surface-hover rounded-md transition-all duration-150"
           >
             <FiSettings class="w-3.5 h-3.5" />
             <span>Settings</span>
@@ -525,34 +530,56 @@ const MainApp = () => {
           </button>
           <div class="flex-1 min-w-0">
             <Show
-              when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
-              fallback={<span class="text-sm font-medium text-text truncate">Chats</span>}
+              when={sidebarTab() === "chats"}
+              fallback={<span class="text-sm font-medium text-text truncate">Workflows</span>}
             >
-              <span class="text-sm font-medium text-text truncate block">
-                {(() => {
-                  if (sessionStore.state.isDraftChat) return "New chat";
-                  const session = sessionStore.visibleSessions().find(
-                    (s) => s.id === sessionStore.state.activeSessionId
-                  );
-                  return formatSessionTitle(session?.title);
-                })()}
-              </span>
+              <Show
+                when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
+                fallback={<span class="text-sm font-medium text-text truncate">Chats</span>}
+              >
+                <span class="text-sm font-medium text-text truncate block">
+                  {(() => {
+                    if (sessionStore.state.isDraftChat) return "New chat";
+                    const session = sessionStore.visibleSessions().find(
+                      (s) => s.id === sessionStore.state.activeSessionId
+                    );
+                    return formatSessionTitle(session?.title);
+                  })()}
+                </span>
+              </Show>
             </Show>
           </div>
-          <button
-            onClick={startNewChat}
-            class="p-2 -mr-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
-            aria-label="New chat"
-          >
-            <FiPlus class="w-5 h-5" />
-          </button>
+          <Show when={sidebarTab() === "chats"}>
+            <button
+              onClick={startNewChat}
+              class="p-2 -mr-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
+              aria-label="New chat"
+            >
+              <FiPlus class="w-5 h-5" />
+            </button>
+          </Show>
         </header>
       </Show>
 
-      {/* Content */}
-      <Show
-        when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
-        fallback={
+      {/* ===== Workflows Center View ===== */}
+      <Show when={sidebarTab() === "workflows"}>
+        <div class="flex-1 flex flex-col items-center justify-center text-center px-8">
+          <div class="w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center mb-4">
+            <FiZap class="w-7 h-7 text-text-muted" />
+          </div>
+          <h2 class="text-lg font-semibold text-text mb-1.5">Workflow Runs</h2>
+          <p class="text-sm text-text-muted max-w-sm">
+            Select a workflow from the sidebar to view its runs, or trigger a new run.
+            The process pipeline view will appear here.
+          </p>
+        </div>
+      </Show>
+
+      {/* ===== Chats Center View ===== */}
+      <Show when={sidebarTab() === "chats"}>
+        <Show
+          when={sessionStore.state.activeSessionId || sessionStore.state.isDraftChat}
+          fallback={
           /* ===== Recent Chats View ===== */
           <div class="flex-1 overflow-y-auto">
             <div class="max-w-xl mx-auto px-6 py-8">
@@ -756,6 +783,7 @@ const MainApp = () => {
             )}
           </Show>
         </Show>
+      </Show>
       </Show>
     </>
   );
