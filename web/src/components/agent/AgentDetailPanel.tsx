@@ -344,8 +344,8 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
       <Show when={!selectorOpen()}>
         {/* Compact info bar: capability badges + system prompt toggle */}
         <div class="border-t border-border px-3 py-1.5 space-y-1.5">
-          {/* Capability badges — clickable when sidebar browser is enabled, status-only otherwise */}
-          <Show when={detectedCapabilities().length > 0}>
+          {/* Capability badges — only shown when sidebar browser setting is enabled */}
+          <Show when={settingsStore.sidebarBrowser() && detectedCapabilities().length > 0}>
             <div class="flex items-center gap-1.5 flex-wrap">
               <For each={detectedCapabilities()}>
                 {(info) => {
@@ -355,43 +355,28 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
                   const phase = () => info.capability?.status?.phase || "Unknown";
 
                   return (
-                    <Show when={settingsStore.sidebarBrowser()} fallback={
-                      <span
-                        class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border ${accent().border} bg-transparent`}
-                      >
-                        <Icon class={`w-3.5 h-3.5 ${accent().iconColor}`} />
-                        <span class="text-text">{meta().label}</span>
-                        <Show when={phase() === "Ready"}>
-                          <span class="w-1.5 h-1.5 rounded-full bg-success" />
-                        </Show>
-                        <Show when={phase() === "Failed"}>
-                          <span class="w-1.5 h-1.5 rounded-full bg-error" />
-                        </Show>
-                      </span>
-                    }>
-                      <button
-                        onClick={() => toggleCapability(info.type)}
-                        class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
-                          expandedCapability() === info.type
-                            ? `${accent().borderActive} bg-gradient-to-br ${accent().bg} shadow-sm`
-                            : `${accent().border} hover:${accent().bg} bg-transparent`
-                        }`}
-                      >
-                        <Icon class={`w-3.5 h-3.5 ${accent().iconColor}`} />
-                        <span class="text-text">{meta().label}</span>
-                        <Show when={phase() === "Ready"}>
-                          <span class="w-1.5 h-1.5 rounded-full bg-success" />
-                        </Show>
-                        <Show when={phase() === "Failed"}>
-                          <span class="w-1.5 h-1.5 rounded-full bg-error" />
-                        </Show>
-                        <Show when={selectedCount(info.type) > 0}>
-                          <span class={`text-[9px] font-bold px-1 py-0.5 rounded-full leading-none ${accent().badge}`}>
-                            {selectedCount(info.type)}
-                          </span>
-                        </Show>
-                      </button>
-                    </Show>
+                    <button
+                      onClick={() => toggleCapability(info.type)}
+                      class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
+                        expandedCapability() === info.type
+                          ? `${accent().borderActive} bg-gradient-to-br ${accent().bg} shadow-sm`
+                          : `${accent().border} hover:${accent().bg} bg-transparent`
+                      }`}
+                    >
+                      <Icon class={`w-3.5 h-3.5 ${accent().iconColor}`} />
+                      <span class="text-text">{meta().label}</span>
+                      <Show when={phase() === "Ready"}>
+                        <span class="w-1.5 h-1.5 rounded-full bg-success" />
+                      </Show>
+                      <Show when={phase() === "Failed"}>
+                        <span class="w-1.5 h-1.5 rounded-full bg-error" />
+                      </Show>
+                      <Show when={selectedCount(info.type) > 0}>
+                        <span class={`text-[9px] font-bold px-1 py-0.5 rounded-full leading-none ${accent().badge}`}>
+                          {selectedCount(info.type)}
+                        </span>
+                      </Show>
+                    </button>
                   );
                 }}
               </For>

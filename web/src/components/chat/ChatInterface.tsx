@@ -1,7 +1,7 @@
 import type { Component } from "solid-js";
 import { createSignal, createMemo, For, Show, onCleanup, createEffect, Switch, Match, batch } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { FiSend, FiAlertCircle, FiSquare, FiCornerDownLeft, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiTerminal, FiEdit3, FiSearch, FiCheckSquare, FiHelpCircle, FiCode } from "solid-icons/fi";
+import { FiSend, FiAlertCircle, FiSquare, FiRefreshCw, FiCpu, FiGitBranch, FiZap, FiPackage, FiFileText, FiBookOpen, FiTool, FiEye, FiTerminal, FiEdit3, FiSearch, FiCheckSquare, FiHelpCircle, FiCode } from "solid-icons/fi";
 import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
@@ -1398,12 +1398,6 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
                 selectedContexts={props.selectedContexts || []}
                 onToggleContext={props.onToggleContext || (() => {})}
               />
-              <Show when={!isStreaming() && !mobileStore.state.isMobile}>
-                <span class="text-xs text-text-muted/50 flex items-center gap-1">
-                  <FiCornerDownLeft class="w-2.5 h-2.5" />
-                  to send
-                </span>
-              </Show>
             </div>
             <Show
               when={isStreaming()}
