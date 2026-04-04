@@ -6,8 +6,8 @@ import ToolCallCard from "./ToolCallCard";
 import QuestionPanel from "./QuestionPanel";
 import PermissionPanel from "./PermissionPanel";
 import type { PendingQuestion } from "./QuestionPanel";
-import { formatContextForAgent } from "./ContextBar";
 import ContextPill from "./ContextPill";
+import { parseContextFromMessage } from "./ContextBar";
 import type { ChatMessage, MessagePart } from "../../types";
 import type { ToolPart } from "../../types/acp";
 import type { SelectedContext } from "../../types/context";
@@ -699,11 +699,24 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
           const created = msg.time?.created || 0;
           const tsMs = created > 4_000_000_000 ? created : created * 1000;
 
+          // For user messages, parse context tags from the stored text and strip
+          // the context markdown so it's not shown raw in the message bubble.
+          let displayContent = allText;
+          let parsedContexts: SelectedContext[] | undefined;
+          if (msg.role === "user" && allText) {
+            const parsed = parseContextFromMessage(allText);
+            displayContent = parsed.cleanContent;
+            if (parsed.contexts.length > 0) {
+              parsedContexts = parsed.contexts;
+            }
+          }
+
           msgs.push({
             id: msg.id,
             role: msg.role as "user" | "assistant",
-            content: allText,
+            content: displayContent,
             timestamp: new Date(tsMs),
+            contexts: parsedContexts,
             parts: orderedParts.length > 0 ? orderedParts : undefined,
             toolParts: toolParts.length > 0 ? toolParts : undefined,
           });
@@ -839,8 +852,9 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
     setStreamingParts([]);
     resetTypewriter();
 
-    const contextPrefix = formatContextForAgent(props.selectedContexts || []);
-    const messageToAgent = contextPrefix ? `${contextPrefix}\n${content}` : content;
+    // Don't prepend context text to message - the backend resolves structured context
+    // into a rich "## Resource Context" block, so frontend prefix would be redundant.
+    const messageToAgent = content;
 
     // Build structured context for the backend to resolve and inject
     const contexts = props.selectedContexts || [];
