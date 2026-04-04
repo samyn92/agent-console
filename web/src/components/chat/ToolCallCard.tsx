@@ -635,7 +635,7 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
       case "success":
         return {
           icon: <FiCheck class="w-4 h-4" />,
-          color: "border-success/50 bg-success/5",
+          color: "border-border bg-surface-2/30",
           label: "Success",
           labelColor: "text-success",
         };
@@ -706,16 +706,73 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
 
   const categoryLabel = createMemo(() => getCategoryLabel(category()));
 
-  // Compact mode: only errors stay expanded; everything else collapsed.
-  // Normal mode: everything expanded by default.
+  // Determine default expansion state from per-tool settings.
+  // Errors always start expanded regardless of settings.
+  // Tools without an explicit setting default to expanded.
   const defaultExpanded = () => {
-    if (!settingsStore.compactMode()) return true;
-    // In compact mode, only errors are expanded
-    return toolInfo().status === "error";
+    if (toolInfo().status === "error") return true;
+    const perToolDefaults = settingsStore.toolExpansionDefaults();
+    const toolName = toolInfo().toolName;
+    if (toolName in perToolDefaults) {
+      return perToolDefaults[toolName] === "expanded";
+    }
+    return true; // expanded by default
   };
   const [expanded, setExpanded] = createSignal(defaultExpanded());
 
+  // Simplified inline rendering for Read File tool calls
+  const isReadFile = createMemo(() => toolInfo().toolName === "read" && "filePath" in toolInfo().input);
+  const readInput = createMemo(() => toolInfo().input as unknown as ReadInput);
+  const readFilePath = createMemo(() => isReadFile() ? readInput().filePath : "");
+  const readLineInfo = createMemo(() => {
+    if (!isReadFile()) return "";
+    const input = readInput();
+    if (input.offset || input.limit) {
+      const start = (input.offset || 0) + 1;
+      const end = input.limit ? start + input.limit - 1 : "end";
+      return ` [${start}-${end}]`;
+    }
+    return "";
+  });
+
   return (
+    <Show when={!isReadFile()} fallback={
+      <div class="group">
+        <div
+          onClick={() => setExpanded((v) => !v)}
+          class="flex items-center gap-2 py-1 cursor-pointer select-none text-sm"
+        >
+          <span class={`shrink-0 transition-transform ${expanded() ? 'rotate-90' : ''} text-text-muted`}>
+            <FiChevronRight class="w-3 h-3" />
+          </span>
+          <span class="shrink-0 text-text-muted">
+            {toolInfo().status === "running"
+              ? <FiLoader class="w-3.5 h-3.5 animate-spin" />
+              : toolInfo().status === "error"
+                ? <FiX class="w-3.5 h-3.5 text-error" />
+                : <FiFileText class="w-3.5 h-3.5" />}
+          </span>
+          <span class="text-text-muted font-medium">Read</span>
+          <span class="text-text-secondary font-mono text-xs truncate">{readFilePath()}{readLineInfo()}</span>
+          <Show when={toolInfo().duration !== null}>
+            <span class="text-xs text-text-muted ml-auto shrink-0">{formatDuration(toolInfo().duration)}</span>
+          </Show>
+        </div>
+        <Show when={expanded() && toolInfo().output}>
+          <div class="ml-7 mb-1">
+            <pre class="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-surface-2/50 rounded px-2 py-1.5 max-h-48 overflow-auto">
+              {toolInfo().output}
+            </pre>
+          </div>
+        </Show>
+        <Show when={toolInfo().error}>
+          <div class="ml-7 mb-1 text-xs text-error bg-error/10 rounded px-2 py-1.5">
+            <span class="font-semibold">Error: </span>
+            {toolInfo().error}
+          </div>
+        </Show>
+      </div>
+    }>
     <div class={`rounded-lg border relative overflow-hidden ${isThemed() ? `${theme().border} ${theme().bg}` : statusConfig().color}`}>
       {/* Watermark - large faded icon for themed capability cards */}
       <Show when={WatermarkIcon()}>
@@ -861,6 +918,7 @@ const ToolCallCard: Component<ToolCallCardProps> = (props) => {
       </Show>
       </Show>{/* end expanded */}
     </div>
+    </Show>
   );
 };
 

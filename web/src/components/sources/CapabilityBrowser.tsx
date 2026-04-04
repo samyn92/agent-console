@@ -145,15 +145,27 @@ const CapabilityBrowser = (props: CapabilityBrowserProps) => {
     const result: CapabilityInfo[] = [];
 
     for (const ref of refs) {
-      const name = ref.name.toLowerCase();
+      const capability = allCapabilities.find(s => s.metadata.name === ref.name);
       let type: CapabilityType | null = null;
-      if (name.includes("kubectl") || name.includes("kubernetes")) type = "kubernetes";
-      else if (name.includes("helm")) type = "helm";
-      else if (name.includes("github")) type = "github";
-      else if (name.includes("gitlab")) type = "gitlab";
+
+      // Use CRD containerType if available
+      if (capability?.spec?.type === "Container" && capability.spec.container?.containerType) {
+        const ct = capability.spec.container.containerType;
+        if (ct === "kubernetes" || ct === "helm" || ct === "github" || ct === "gitlab") {
+          type = ct;
+        }
+      }
+
+      // Fallback to name-based detection
+      if (!type) {
+        const name = ref.name.toLowerCase();
+        if (name.includes("kubectl") || name.includes("kubernetes")) type = "kubernetes";
+        else if (name.includes("helm")) type = "helm";
+        else if (name.includes("github")) type = "github";
+        else if (name.includes("gitlab")) type = "gitlab";
+      }
 
       if (type && !result.some(s => s.type === type)) {
-        const capability = allCapabilities.find(s => s.metadata.name === ref.name);
         result.push({ type, capabilityRef: ref.name, capability });
       }
     }

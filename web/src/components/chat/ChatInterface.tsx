@@ -18,7 +18,7 @@ import { sessionStore } from "../../stores/sessions";
 import { mobileStore } from "../../stores/mobileStore";
 import Markdown, { StreamingMarkdown } from "./Markdown";
 
-import { detectToolCategory, toolThemes, getCategoryIcon, getCategoryLabel } from "../../lib/capability-themes";
+import { detectToolCategory, toolThemes, getCategoryIcon, getCategoryLabel, getCapabilityDisplayLabel } from "../../lib/capability-themes";
 
 // ============================================================================
 // TOOL ACTIVITY HELPERS
@@ -310,7 +310,7 @@ const Message: Component<MessageProps> = (props) => {
   if (isUser()) {
     return (
       <div class="flex justify-end">
-        <div class="max-w-[80%] rounded-lg rounded-br px-4 py-2.5 bg-primary text-primary-foreground">
+        <div class="max-w-[80%] rounded-lg rounded-br px-4 py-2.5 bg-white text-gray-900">
           {/* Context pills attached to this message */}
           <Show when={message().contexts && message().contexts!.length > 0}>
             <div class="flex items-center gap-1 mb-1.5 flex-wrap">
@@ -1187,10 +1187,10 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
                       }).filter(Boolean) as { ref: { name: string; alias?: string }; capability: CapabilityResponse }[];
                     })()}>
                       {({ ref, capability }) => {
-                        const cat = detectToolCategory(ref.alias || ref.name);
+                        const cat = detectToolCategory(ref.alias || ref.name, capability);
                         const theme = toolThemes[cat];
                         const Icon = getCategoryIcon(cat);
-                        const label = getCategoryLabel(cat);
+                        const label = getCapabilityDisplayLabel(cat, capability) || getCategoryLabel(cat);
                         const imageName = () => {
                           if (!capability.spec.image) return null;
                           const img = capability.spec.image;
@@ -1209,11 +1209,6 @@ const ChatInterface: Component<ChatInterfaceProps> = (props) => {
                                 <span class={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${theme.badge}`}>
                                   <Icon class="w-2.5 h-2.5" />
                                   {label}
-                                </span>
-                              </Show>
-                              <Show when={capability.spec.type}>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-surface-2 border border-border/60 text-text-secondary">
-                                  {capability.spec.type}
                                 </span>
                               </Show>
                               <Show when={capability.spec.audit}>

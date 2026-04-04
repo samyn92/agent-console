@@ -6,7 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-chi/cors v1.2.2
 	github.com/go-logr/zapr v1.3.0
-	github.com/samyn92/agent-operator-core v0.0.1
+	github.com/samyn92/agent-operator-core v0.0.31
 	go.opentelemetry.io/proto/otlp v1.9.0
 	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.78.0
@@ -60,3 +60,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2-0.20260122202528-d9cc6641c482 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/samyn92/agent-operator-core => ../agent-operator-core

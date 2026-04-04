@@ -307,6 +307,15 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, namespace string) ([]agen
 	return list.Items, nil
 }
 
+// GetWorkflowRun returns a specific WorkflowRun
+func (c *Client) GetWorkflowRun(ctx context.Context, namespace, name string) (*agentsv1alpha1.WorkflowRun, error) {
+	var run agentsv1alpha1.WorkflowRun
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
 func ptr[T any](v T) *T {
 	return &v
 }

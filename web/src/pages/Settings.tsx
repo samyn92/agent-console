@@ -4,52 +4,38 @@ import { A } from "@solidjs/router";
 import {
   FiMoon, FiSun, FiMonitor,
   FiCheck, FiTrash2, FiInfo,
-  FiArrowLeft, FiSliders, FiEye, FiDatabase, FiAlertTriangle,
-  FiSidebar, FiMenu,
+  FiArrowLeft,
 } from "solid-icons/fi";
 import { themeStore } from "../stores/theme";
 import { settingsStore } from "../stores/settings";
-import { panelStore } from "../stores/panelStore";
-import { mobileStore } from "../stores/mobileStore";
-import TwoPanelLayout from "../components/layout/ThreePanelLayout";
+import { getToolDisplayName } from "../types/acp";
 
 // =============================================================================
-// LOCAL SETTINGS (persisted separately via Save button)
+// LOCAL SETTINGS (auto-persisted to localStorage)
 // =============================================================================
 
-const [settings, setSettings] = createSignal({
-  defaultNamespace: "",
+const LOCAL_SETTINGS_KEY = "agent-console-settings";
+
+const [settings, _setSettingsRaw] = createSignal({
   refreshInterval: 30,
-  showSystemPrompts: true,
 });
 
-// =============================================================================
-// SECTION NAVIGATION
-// =============================================================================
-
-type SettingsSectionId = "appearance" | "data" | "display" | "danger";
-
-const SECTIONS: { id: SettingsSectionId; label: string; icon: Component<{ class?: string }> }[] = [
-  { id: "appearance", label: "Appearance", icon: FiSliders },
-  { id: "data", label: "Data & Refresh", icon: FiDatabase },
-  { id: "display", label: "Display", icon: FiEye },
-  { id: "danger", label: "Danger Zone", icon: FiAlertTriangle },
-];
+/** Update local settings and auto-persist to localStorage */
+const setSettings = (next: ReturnType<typeof settings>) => {
+  _setSettingsRaw(next);
+  localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(next));
+};
 
 // =============================================================================
 // REUSABLE SUB-COMPONENTS
 // =============================================================================
 
 const SettingsCard: Component<{
-  id: string;
   title: string;
   description?: string;
   children: any;
 }> = (props) => (
-  <div
-    id={props.id}
-    class="bg-surface border border-border rounded-xl p-5 mb-6 transition-colors duration-200 scroll-mt-6"
-  >
+  <div class="bg-surface border border-border rounded-xl p-5 mb-6 transition-colors duration-200">
     <h2 class="text-lg font-semibold text-text mb-1">{props.title}</h2>
     <Show when={props.description}>
       <p class="text-sm text-text-secondary mb-4">{props.description}</p>
@@ -166,21 +152,12 @@ const SettingsPage: Component = () => {
     accentColor, setAccentColor,
   } = themeStore;
 
-  const [saved, setSaved] = createSignal(false);
-  const [activeSection, setActiveSection] = createSignal<SettingsSectionId>("appearance");
-
-  const saveSettings = () => {
-    localStorage.setItem("agent-console-settings", JSON.stringify(settings()));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
   // Load settings on mount
   createEffect(() => {
-    const stored = localStorage.getItem("agent-console-settings");
+    const stored = localStorage.getItem(LOCAL_SETTINGS_KEY);
     if (stored) {
       try {
-        setSettings({ ...settings(), ...JSON.parse(stored) });
+        _setSettingsRaw({ ...settings(), ...JSON.parse(stored) });
       } catch {
         // Ignore parse errors
       }
@@ -192,25 +169,10 @@ const SettingsPage: Component = () => {
     window.location.reload();
   };
 
-  const scrollToSection = (id: SettingsSectionId) => {
-    setActiveSection(id);
-    const el = document.getElementById(`settings-${id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    // Close drawer on mobile after selecting section
-    if (mobileStore.state.isMobile) {
-      mobileStore.closeDrawer();
-    }
-  };
-
-  // =========================================================================
-  // LEFT PANEL (sidebar)
-  // =========================================================================
-  const leftPanel = () => (
-    <>
-      {/* Header — back arrow + title */}
-      <div class="shrink-0 border-b border-border/60 px-3 py-3">
+  return (
+    <div class="flex flex-col h-screen bg-background text-text overflow-hidden">
+      {/* Header with back button */}
+      <header class="shrink-0 border-b border-border bg-surface px-4 py-3">
         <A
           href="/"
           class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text transition-colors rounded-md px-1.5 py-1 -ml-1.5 hover:bg-surface-hover"
@@ -218,114 +180,14 @@ const SettingsPage: Component = () => {
           <FiArrowLeft class="w-4 h-4" />
           <span class="font-medium">Settings</span>
         </A>
-      </div>
-
-      {/* Section nav */}
-      <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        <For each={SECTIONS}>
-          {(section) => {
-            const Icon = section.icon;
-            return (
-              <button
-                onClick={() => scrollToSection(section.id)}
-                class={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
-                  activeSection() === section.id
-                    ? "bg-surface-hover text-text"
-                    : "text-text-secondary hover:text-text hover:bg-surface-hover/60"
-                }`}
-              >
-                <Icon class="w-4 h-4 shrink-0" />
-                <span>{section.label}</span>
-              </button>
-            );
-          }}
-        </For>
-      </nav>
-
-      {/* Footer — matches MainApp sidebar footer */}
-      <footer class="shrink-0 border-t border-border/60 bg-surface/50">
-        <div class="flex items-center gap-1 px-2.5 py-2">
-          {/* Panel toggle (desktop) / Close drawer (mobile) */}
-          <Show
-            when={!mobileStore.state.isMobile}
-            fallback={
-              <button
-                onClick={() => mobileStore.closeDrawer()}
-                class="p-1.5 text-text-muted/60 hover:text-text-secondary hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
-                title="Close drawer"
-                aria-label="Close navigation drawer"
-              >
-                <FiSidebar class="w-3.5 h-3.5" />
-              </button>
-            }
-          >
-            <button
-              onClick={panelStore.toggleLeft}
-              class="p-1.5 text-text-muted/60 hover:text-text-secondary hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
-              title="Toggle left panel"
-              aria-label="Toggle left panel"
-            >
-              <FiSidebar class="w-3.5 h-3.5" />
-            </button>
-          </Show>
-          <div class="flex-1" />
-          <button
-            onClick={saveSettings}
-            class={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150 ${
-              saved()
-                ? "bg-success text-white"
-                : "text-text-muted/70 hover:text-text-secondary hover:bg-surface-hover"
-            }`}
-          >
-            {saved() ? (
-              <>
-                <FiCheck class="w-3.5 h-3.5" />
-                <span>Saved</span>
-              </>
-            ) : (
-              <span>Save Changes</span>
-            )}
-          </button>
-        </div>
-      </footer>
-    </>
-  );
-
-  // =========================================================================
-  // CENTER CONTENT
-  // =========================================================================
-  const centerContent = () => (
-    <>
-      {/* Mobile header bar */}
-      <Show when={mobileStore.state.isMobile}>
-        <header class="mobile-header shrink-0 flex items-center gap-3 px-3 py-2.5 border-b border-border bg-surface">
-          <button
-            onClick={() => mobileStore.openDrawer()}
-            class="p-2 -ml-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
-            aria-label="Open navigation menu"
-          >
-            <FiMenu class="w-5 h-5" />
-          </button>
-          <div class="flex-1 min-w-0">
-            <span class="text-sm font-medium text-text truncate">Settings</span>
-          </div>
-          <A
-            href="/"
-            class="p-2 -mr-1 text-text-secondary hover:text-text hover:bg-surface-hover rounded-lg transition-colors cursor-pointer touch-target"
-            aria-label="Back to home"
-          >
-            <FiArrowLeft class="w-5 h-5" />
-          </A>
-        </header>
-      </Show>
+      </header>
 
       {/* Scrollable settings content */}
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-2xl mx-auto px-6 py-8">
 
-          {/* ── Appearance ── */}
+          {/* -- Appearance -- */}
           <SettingsCard
-            id="settings-appearance"
             title="Appearance"
             description="Customize how the console looks"
           >
@@ -484,22 +346,93 @@ const SettingsPage: Component = () => {
                 />
               </div>
             </div>
+          </SettingsCard>
 
-            <div class="mt-4 pt-4 border-t border-border">
-              <Toggle
-                label="Compact Mode"
-                description="Collapse tool cards by default; only errors stay expanded"
-                checked={settingsStore.compactMode()}
-                onChange={(v) => settingsStore.setCompactMode(v)}
-              />
+          {/* -- Display Options -- */}
+          <SettingsCard
+            title="Display Options"
+            description="Control what information is shown"
+          >
+            <Toggle
+              label="Show System Prompts"
+              description="Show the system prompt section in the agent sidebar"
+              checked={settingsStore.showSystemPrompts()}
+              onChange={(v) => settingsStore.setShowSystemPrompts(v)}
+            />
+            <Toggle
+              label="Sidebar Resource Browser"
+              description="Also show the resource browser panel in the left sidebar (always available in composer)"
+              checked={settingsStore.sidebarBrowser()}
+              onChange={(v) => settingsStore.setSidebarBrowser(v)}
+            />
+
+            {/* Per-tool expansion defaults */}
+            <div class="pt-2 border-t border-border">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <p class="text-sm font-semibold text-text">Tool Card Expansion</p>
+                  <p class="text-xs text-text-secondary mt-0.5">
+                    Choose which tool cards start expanded or collapsed in chat
+                  </p>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button
+                    onClick={() => settingsStore.setAllToolExpansionDefaults(
+                      ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "task", "todowrite", "question"],
+                      "expanded"
+                    )}
+                    class="px-2 py-1 text-xs text-text-muted hover:text-text rounded-md hover:bg-surface-hover transition-colors"
+                  >
+                    Expand all
+                  </button>
+                  <button
+                    onClick={() => settingsStore.setAllToolExpansionDefaults(
+                      ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "task", "todowrite", "question"],
+                      "collapsed"
+                    )}
+                    class="px-2 py-1 text-xs text-text-muted hover:text-text rounded-md hover:bg-surface-hover transition-colors"
+                  >
+                    Collapse all
+                  </button>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <For each={["bash", "read", "write", "edit", "glob", "grep", "webfetch", "task", "todowrite", "question"]}>
+                  {(toolName) => {
+                    const isCollapsed = () => {
+                      const defaults = settingsStore.toolExpansionDefaults();
+                      return defaults[toolName] === "collapsed";
+                    };
+                    return (
+                      <div class="flex items-center justify-between py-1.5">
+                        <span class="text-sm text-text">{getToolDisplayName(toolName)}</span>
+                        <button
+                          onClick={() => settingsStore.setToolExpansionDefault(
+                            toolName,
+                            isCollapsed() ? "expanded" : "collapsed"
+                          )}
+                          class={`relative w-11 h-6 rounded-full transition-colors ${
+                            !isCollapsed() ? "bg-primary" : "bg-surface-hover"
+                          }`}
+                        >
+                          <span
+                            class={`absolute top-1 left-1 w-4 h-4 rounded-full shadow-sm transition-transform ${
+                              !isCollapsed() ? "bg-primary-foreground translate-x-5" : "bg-white"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  }}
+                </For>
+              </div>
             </div>
           </SettingsCard>
 
-          {/* ── Data & Refresh ── */}
+          {/* -- Refresh -- */}
           <SettingsCard
-            id="settings-data"
-            title="Data & Refresh"
-            description="Configure how data is loaded and refreshed"
+            title="Refresh"
+            description="Configure data refresh and cache"
           >
             <Select
               label="Auto-refresh interval"
@@ -514,43 +447,6 @@ const SettingsPage: Component = () => {
               onChange={(v) => setSettings({ ...settings(), refreshInterval: parseInt(v) })}
             />
 
-            <div class="flex items-center justify-between py-2">
-              <div>
-                <p class="text-sm font-semibold text-text">Default Namespace</p>
-                <p class="text-xs text-text-secondary mt-0.5">Filter resources by namespace</p>
-              </div>
-              <input
-                type="text"
-                value={settings().defaultNamespace}
-                onInput={(e) => setSettings({ ...settings(), defaultNamespace: e.currentTarget.value })}
-                placeholder="All namespaces"
-                class="px-3 py-1.5 w-48 bg-surface-hover border border-border rounded-lg text-sm text-text placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent"
-              />
-            </div>
-          </SettingsCard>
-
-          {/* ── Display Options ── */}
-          <SettingsCard
-            id="settings-display"
-            title="Display Options"
-            description="Control what information is shown"
-          >
-            <Toggle
-              label="Show System Prompts"
-              description="Display full system prompts on agent detail pages"
-              checked={settings().showSystemPrompts}
-              onChange={(v) => setSettings({ ...settings(), showSystemPrompts: v })}
-            />
-            <Toggle
-              label="Sidebar Resource Browser"
-              description="Also show the resource browser panel in the left sidebar (always available in composer)"
-              checked={settingsStore.sidebarBrowser()}
-              onChange={(v) => settingsStore.setSidebarBrowser(v)}
-            />
-          </SettingsCard>
-
-          {/* ── Danger Zone ── */}
-          <SettingsCard id="settings-danger" title="Danger Zone">
             <div class="flex items-center justify-between py-2">
               <div>
                 <p class="text-sm font-semibold text-text">Clear Cache</p>
@@ -573,13 +469,8 @@ const SettingsPage: Component = () => {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
-  return <TwoPanelLayout left={leftPanel()} center={centerContent()} />;
 };
 
 export default SettingsPage;

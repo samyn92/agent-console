@@ -63,12 +63,51 @@ export type ToolCategory =
   | "builtin"
   | "generic";
 
+/** CRD capability type as returned by the API */
+export type CRDCapabilityType = "Container" | "MCP" | "Skill" | "Tool" | "Plugin";
+
+/** Short prefix labels for each CRD capability type */
+const capabilityTypePrefix: Record<CRDCapabilityType, string> = {
+  Container: "CLI",
+  MCP: "MCP",
+  Skill: "Skill",
+  Tool: "Tool",
+  Plugin: "Plugin",
+};
+
 /**
  * Detect the category of a tool or capability by name.
- * Works for both tool names (e.g. "kubectl-get-pods") and
- * capability ref names (e.g. "kubectl-readonly", "github-contributor").
+ * When a CapabilityResponse is provided, uses the CRD's authoritative
+ * type and containerType fields instead of name-guessing.
  */
-export function detectToolCategory(name: string): ToolCategory {
+export function detectToolCategory(
+  name: string,
+  capability?: { spec: { type?: string; container?: { containerType?: string } } },
+): ToolCategory {
+  // If we have CRD data, use it authoritatively
+  if (capability?.spec?.type) {
+    const crdType = capability.spec.type;
+
+    if (crdType === "Container" && capability.spec.container?.containerType) {
+      const ct = capability.spec.container.containerType;
+      if (ct === "kubernetes") return "kubernetes";
+      if (ct === "helm") return "helm";
+      if (ct === "github") return "github";
+      if (ct === "gitlab") return "gitlab";
+      // "git" and "custom" fall through to name-based detection
+    }
+
+    // For MCP/Skill/Tool/Plugin: try name-based domain detection first,
+    // so "gitlab-mcp" resolves to "gitlab" (not "mcp")
+    if (crdType === "MCP" || crdType === "Skill" || crdType === "Tool" || crdType === "Plugin") {
+      const domain = detectDomainFromName(name);
+      if (domain) return domain;
+      // No domain detected — return the type-level fallback
+      if (crdType === "MCP") return "mcp";
+      return "generic";
+    }
+  }
+
   const lower = name.toLowerCase();
 
   // Built-in OpenCode tools
@@ -78,17 +117,47 @@ export function detectToolCategory(name: string): ToolCategory {
   ];
   if (builtins.includes(lower)) return "builtin";
 
-  // Capability-based tools (substring match)
+  // Capability-based tools (substring match — fallback when CRD data unavailable)
+  return detectDomainFromName(name) || "generic";
+}
+
+/** Try to detect a domain category from a capability/tool name via substring matching. */
+function detectDomainFromName(name: string): ToolCategory | null {
+  const lower = name.toLowerCase();
   if (lower.includes("kubectl") || lower.includes("kubernetes") || lower.includes("k8s")) return "kubernetes";
   if (lower.includes("helm")) return "helm";
-  if (lower.includes("github")) return "github";
-  if (lower.includes("gitlab")) return "gitlab";
+  if (lower.includes("github") || lower.includes("gh-")) return "github";
+  if (lower.includes("gitlab") || lower.includes("glab")) return "gitlab";
+  if (lower.includes("git") && !lower.includes("github") && !lower.includes("gitlab")) return "generic"; // plain git
   if (lower.includes("terraform") || lower.includes("tf-")) return "terraform";
   if (lower.includes("postgres") || lower.includes("mysql") || lower.includes("database") || lower.includes("redis") || lower.includes("mongo")) return "database";
   if (lower.includes("slack")) return "slack";
   if (lower.includes("mcp-") || lower.includes("mcp_")) return "mcp";
+  return null;
+}
 
-  return "generic";
+/**
+ * Get a display label that includes the capability type prefix.
+ * Returns labels like "CLI - Kubernetes", "MCP - GitLab", "Skill", "Tool", etc.
+ * Falls back to just the category label when no CRD type is available.
+ */
+export function getCapabilityDisplayLabel(
+  category: ToolCategory,
+  capability?: { spec: { type?: string } },
+): string | null {
+  const domainLabel = getCategoryLabel(category);
+  if (!capability?.spec?.type) return domainLabel;
+
+  const prefix = capabilityTypePrefix[capability.spec.type as CRDCapabilityType];
+  if (!prefix) return domainLabel;
+
+  // Avoid redundancy: "MCP - MCP" → just "MCP"
+  if (prefix === domainLabel) return prefix;
+
+  // For types without a domain (e.g. a generic Skill or Tool), just show the type
+  if (!domainLabel) return prefix;
+
+  return `${prefix} - ${domainLabel}`;
 }
 
 // =============================================================================

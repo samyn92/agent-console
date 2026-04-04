@@ -86,11 +86,13 @@ export interface WorkflowResponse {
       schedule?: { cron: string; timezone?: string };
       webhook?: { path?: string };
       github?: { events?: string[]; actions?: string[]; repos?: string[] };
+      gitlab?: { events?: string[]; actions?: string[]; projects?: string[] };
     };
     steps: Array<{
       name: string;
       agent: string;
       prompt: string;
+      piAgent?: string;
     }>;
   };
   status: {
@@ -146,6 +148,32 @@ export interface CapabilityResponse {
     };
     audit: boolean;
     instructions?: string;
+
+    // Type-specific sub-specs (only one populated based on type)
+    container?: {
+      image: string;
+      serviceAccountName?: string;
+      commandPrefix?: string;
+      containerType?: string; // "kubernetes" | "helm" | "github" | "gitlab" | "git" | "custom"
+    };
+    mcp?: {
+      mode: string; // "local" | "remote" | "server"
+      url?: string;
+      enabled?: boolean;
+    };
+    skill?: {
+      hasContent: boolean;
+      hasConfigMapRef: boolean;
+    };
+    tool?: {
+      hasCode: boolean;
+      hasConfigMapRef: boolean;
+    };
+    plugin?: {
+      hasCode: boolean;
+      hasConfigMapRef: boolean;
+      package?: string;
+    };
   };
   status: {
     phase: string;
@@ -174,25 +202,45 @@ export async function getWorkflow(namespace: string, name: string): Promise<Work
 }
 
 // Workflow Runs
+export interface StepEvent {
+  type: 'tool_call' | 'message' | 'error' | 'thinking';
+  ts: number;           // Unix millis
+  toolName?: string;    // for tool_call events
+  toolArgs?: string;    // JSON string of args
+  toolResult?: string;  // JSON string of result
+  duration?: number;    // ms
+  content?: string;     // for message/error events
+}
+
 export interface WorkflowRunResponse {
   metadata: {
     name: string;
     namespace: string;
     creationTimestamp: string;
+    labels?: Record<string, string>;
   };
   spec: {
     workflowRef: string;
+    triggerData?: string;
   };
   status: {
     phase: string;
     startTime?: string;
     endTime?: string;
+    currentStep?: number;
+    error?: string;
     steps?: Array<{
       name: string;
       phase: string;
       startTime?: string;
       endTime?: string;
       output?: string;
+      error?: string;
+      jobName?: string;
+      sessionID?: string;
+      toolCalls?: number;
+      tokensUsed?: number;
+      events?: StepEvent[];
     }>;
   };
 }
@@ -200,6 +248,10 @@ export interface WorkflowRunResponse {
 export async function listWorkflowRuns(namespace?: string): Promise<WorkflowRunResponse[]> {
   const params = namespace ? `?namespace=${namespace}` : '';
   return fetchAPI<WorkflowRunResponse[]>(`/api/v1/workflowruns${params}`);
+}
+
+export async function getWorkflowRun(namespace: string, name: string): Promise<WorkflowRunResponse> {
+  return fetchAPI<WorkflowRunResponse>(`/api/v1/workflowruns/${namespace}/${name}`);
 }
 
 // Channels — types kept for watch infrastructure

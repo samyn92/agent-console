@@ -640,6 +640,21 @@ func (h *Handlers) ListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, result)
 }
 
+// GetWorkflowRun returns a specific workflow run
+func (h *Handlers) GetWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	run, err := h.k8s.GetWorkflowRun(r.Context(), namespace, name)
+	if err != nil {
+		h.log.Errorw("Failed to get workflow run", "namespace", namespace, "name", name, "error", err)
+		jsonError(w, http.StatusNotFound, "WorkflowRun not found")
+		return
+	}
+
+	jsonOK(w, workflowRunToResponse(*run))
+}
+
 // ============================================================================
 // CHANNELS
 // ============================================================================

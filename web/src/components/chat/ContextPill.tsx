@@ -57,43 +57,40 @@ function getContextStyle(ctx: SelectedContext): ContextStyle {
 }
 
 /**
- * Styles for pills rendered ON the user message bubble (bg-primary).
- * In dark mode, bg-primary is white (#fafafa) — use dark-on-light colors.
- * In light mode, bg-primary is black (#171717) — use light-on-dark colors.
- * We use the `primary-foreground` color as the text base and semi-transparent
- * overlays of the foreground color for bg/border so it works in both modes.
+ * Styles for pills rendered ON the user message bubble (always white bg).
+ * Use dark-on-light colors that work regardless of theme or accent color.
  */
 function getContextStyleOnPrimary(ctx: SelectedContext): ContextStyle {
   switch (ctx.type) {
     case "k8s-resource":
       return {
         icon: KubernetesIcon,
-        pill: "bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80",
-        iconClass: "text-primary-foreground/70",
+        pill: "bg-gray-100 border-gray-200 text-gray-700",
+        iconClass: "text-gray-500",
       };
     case "helm-release":
       return {
         icon: HelmIcon,
-        pill: "bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80",
-        iconClass: "text-primary-foreground/70",
+        pill: "bg-gray-100 border-gray-200 text-gray-700",
+        iconClass: "text-gray-500",
       };
     case "github-path":
       return {
         icon: GitHubIcon,
-        pill: "bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80",
-        iconClass: "text-primary-foreground/70",
+        pill: "bg-gray-100 border-gray-200 text-gray-700",
+        iconClass: "text-gray-500",
       };
     case "gitlab-path":
       return {
         icon: GitLabIcon,
-        pill: "bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80",
-        iconClass: "text-primary-foreground/70",
+        pill: "bg-gray-100 border-gray-200 text-gray-700",
+        iconClass: "text-gray-500",
       };
     default:
       return {
         icon: KubernetesIcon,
-        pill: "bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/60",
-        iconClass: "text-primary-foreground/60",
+        pill: "bg-gray-100 border-gray-200 text-gray-600",
+        iconClass: "text-gray-400",
       };
   }
 }

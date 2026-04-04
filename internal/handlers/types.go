@@ -67,9 +67,10 @@ type GitLabContextItem struct {
 
 // Metadata is common K8s metadata
 type Metadata struct {
-	Name              string    `json:"name"`
-	Namespace         string    `json:"namespace"`
-	CreationTimestamp time.Time `json:"creationTimestamp"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	CreationTimestamp time.Time         `json:"creationTimestamp"`
+	Labels            map[string]string `json:"labels,omitempty"`
 }
 
 // AgentResponse is the JSON response for an Agent
@@ -190,23 +191,43 @@ type WorkflowRunResponse struct {
 // WorkflowRunSpecResponse is workflow run spec
 type WorkflowRunSpecResponse struct {
 	WorkflowRef string `json:"workflowRef"`
+	TriggerData string `json:"triggerData,omitempty"`
 }
 
 // WorkflowRunStatusResponse is workflow run status
 type WorkflowRunStatusResponse struct {
-	Phase     string               `json:"phase"`
-	StartTime *time.Time           `json:"startTime,omitempty"`
-	EndTime   *time.Time           `json:"endTime,omitempty"`
-	Steps     []StepStatusResponse `json:"steps,omitempty"`
+	Phase       string               `json:"phase"`
+	StartTime   *time.Time           `json:"startTime,omitempty"`
+	EndTime     *time.Time           `json:"endTime,omitempty"`
+	CurrentStep int                  `json:"currentStep,omitempty"`
+	Error       string               `json:"error,omitempty"`
+	Steps       []StepStatusResponse `json:"steps,omitempty"`
+}
+
+// StepEventResponse is a single trace event from step execution (tool call, message, error)
+type StepEventResponse struct {
+	Type       string `json:"type"`                 // tool_call, message, error, thinking
+	Timestamp  int64  `json:"ts"`                   // Unix millis
+	ToolName   string `json:"toolName,omitempty"`   // for tool_call events
+	ToolArgs   string `json:"toolArgs,omitempty"`   // JSON string of args
+	ToolResult string `json:"toolResult,omitempty"` // JSON string of result
+	Duration   int64  `json:"duration,omitempty"`   // ms
+	Content    string `json:"content,omitempty"`    // for message/error events
 }
 
 // StepStatusResponse is step status
 type StepStatusResponse struct {
-	Name      string     `json:"name"`
-	Phase     string     `json:"phase"`
-	StartTime *time.Time `json:"startTime,omitempty"`
-	EndTime   *time.Time `json:"endTime,omitempty"`
-	Output    string     `json:"output,omitempty"`
+	Name       string              `json:"name"`
+	Phase      string              `json:"phase"`
+	StartTime  *time.Time          `json:"startTime,omitempty"`
+	EndTime    *time.Time          `json:"endTime,omitempty"`
+	Output     string              `json:"output,omitempty"`
+	Error      string              `json:"error,omitempty"`
+	JobName    string              `json:"jobName,omitempty"`
+	SessionID  string              `json:"sessionID,omitempty"`
+	ToolCalls  int                 `json:"toolCalls,omitempty"`
+	TokensUsed int                 `json:"tokensUsed,omitempty"`
+	Events     []StepEventResponse `json:"events,omitempty"`
 }
 
 // ChannelResponse is the JSON response for a Channel
@@ -579,12 +600,16 @@ func workflowRunToResponse(run agentsv1alpha1.WorkflowRun) WorkflowRunResponse {
 			Name:              run.Name,
 			Namespace:         run.Namespace,
 			CreationTimestamp: run.CreationTimestamp.Time,
+			Labels:            run.Labels,
 		},
 		Spec: WorkflowRunSpecResponse{
 			WorkflowRef: run.Spec.WorkflowRef,
+			TriggerData: run.Spec.TriggerData,
 		},
 		Status: WorkflowRunStatusResponse{
-			Phase: string(run.Status.Phase),
+			Phase:       string(run.Status.Phase),
+			CurrentStep: run.Status.CurrentStep,
+			Error:       run.Status.Error,
 		},
 	}
 
@@ -599,9 +624,14 @@ func workflowRunToResponse(run agentsv1alpha1.WorkflowRun) WorkflowRunResponse {
 
 	for _, s := range run.Status.StepResults {
 		step := StepStatusResponse{
-			Name:   s.Name,
-			Phase:  s.Phase,
-			Output: s.Output,
+			Name:       s.Name,
+			Phase:      s.Phase,
+			Output:     s.Output,
+			Error:      s.Error,
+			JobName:    s.JobName,
+			SessionID:  s.SessionID,
+			ToolCalls:  s.ToolCalls,
+			TokensUsed: s.TokensUsed,
 		}
 		if s.StartTime != nil {
 			t := s.StartTime.Time
@@ -610,6 +640,18 @@ func workflowRunToResponse(run agentsv1alpha1.WorkflowRun) WorkflowRunResponse {
 		if s.CompletionTime != nil {
 			t := s.CompletionTime.Time
 			step.EndTime = &t
+		}
+		// Map step trace events
+		for _, ev := range s.Events {
+			step.Events = append(step.Events, StepEventResponse{
+				Type:       ev.Type,
+				Timestamp:  ev.Timestamp,
+				ToolName:   ev.ToolName,
+				ToolArgs:   ev.ToolArgs,
+				ToolResult: ev.ToolResult,
+				Duration:   ev.Duration,
+				Content:    ev.Content,
+			})
 		}
 		resp.Status.Steps = append(resp.Status.Steps, step)
 	}
@@ -659,6 +701,47 @@ type CapabilitySpecResponse struct {
 	RateLimit          *CapabilityRateLimitResponse   `json:"rateLimit,omitempty"`
 	Audit              bool                           `json:"audit"`
 	Instructions       string                         `json:"instructions,omitempty"`
+
+	// Type-specific sub-specs (only one populated based on Type)
+	Container *ContainerCapResponse `json:"container,omitempty"`
+	MCP       *MCPCapResponse       `json:"mcp,omitempty"`
+	Skill     *SkillCapResponse     `json:"skill,omitempty"`
+	Tool      *ToolCapResponse      `json:"tool,omitempty"`
+	Plugin    *PluginCapResponse    `json:"plugin,omitempty"`
+}
+
+// ContainerCapResponse is the Container sub-spec
+type ContainerCapResponse struct {
+	Image              string `json:"image"`
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	CommandPrefix      string `json:"commandPrefix,omitempty"`
+	ContainerType      string `json:"containerType,omitempty"`
+}
+
+// MCPCapResponse is the MCP sub-spec
+type MCPCapResponse struct {
+	Mode    string `json:"mode"`
+	URL     string `json:"url,omitempty"`
+	Enabled *bool  `json:"enabled,omitempty"`
+}
+
+// SkillCapResponse is the Skill sub-spec
+type SkillCapResponse struct {
+	HasContent      bool `json:"hasContent"`
+	HasConfigMapRef bool `json:"hasConfigMapRef"`
+}
+
+// ToolCapResponse is the Tool sub-spec
+type ToolCapResponse struct {
+	HasCode         bool `json:"hasCode"`
+	HasConfigMapRef bool `json:"hasConfigMapRef"`
+}
+
+// PluginCapResponse is the Plugin sub-spec
+type PluginCapResponse struct {
+	HasCode         bool   `json:"hasCode"`
+	HasConfigMapRef bool   `json:"hasConfigMapRef"`
+	Package         string `json:"package,omitempty"`
 }
 
 // CapabilityPermissionsResponse is the three-tier permission model
@@ -706,11 +789,51 @@ func capabilityToResponse(capability agentsv1alpha1.Capability) CapabilityRespon
 		},
 	}
 
-	// Populate Container-specific fields for backward compatibility with the UI
+	// Populate Container-specific fields (flat fields kept for backward compat)
 	if capability.Spec.Container != nil {
 		resp.Spec.Image = capability.Spec.Container.Image
 		resp.Spec.ServiceAccountName = capability.Spec.Container.ServiceAccountName
 		resp.Spec.CommandPrefix = capability.Spec.Container.CommandPrefix
+		resp.Spec.Container = &ContainerCapResponse{
+			Image:              capability.Spec.Container.Image,
+			ServiceAccountName: capability.Spec.Container.ServiceAccountName,
+			CommandPrefix:      capability.Spec.Container.CommandPrefix,
+			ContainerType:      capability.Spec.Container.ContainerType,
+		}
+	}
+
+	// Populate MCP sub-spec
+	if capability.Spec.MCP != nil {
+		resp.Spec.MCP = &MCPCapResponse{
+			Mode:    capability.Spec.MCP.Mode,
+			URL:     capability.Spec.MCP.URL,
+			Enabled: capability.Spec.MCP.Enabled,
+		}
+	}
+
+	// Populate Skill sub-spec
+	if capability.Spec.Skill != nil {
+		resp.Spec.Skill = &SkillCapResponse{
+			HasContent:      capability.Spec.Skill.Content != "",
+			HasConfigMapRef: capability.Spec.Skill.ConfigMapRef != nil,
+		}
+	}
+
+	// Populate Tool sub-spec
+	if capability.Spec.Tool != nil {
+		resp.Spec.Tool = &ToolCapResponse{
+			HasCode:         capability.Spec.Tool.Code != "",
+			HasConfigMapRef: capability.Spec.Tool.ConfigMapRef != nil,
+		}
+	}
+
+	// Populate Plugin sub-spec
+	if capability.Spec.Plugin != nil {
+		resp.Spec.Plugin = &PluginCapResponse{
+			HasCode:         capability.Spec.Plugin.Code != "",
+			HasConfigMapRef: capability.Spec.Plugin.ConfigMapRef != nil,
+			Package:         capability.Spec.Plugin.Package,
+		}
 	}
 
 	// Convert permissions

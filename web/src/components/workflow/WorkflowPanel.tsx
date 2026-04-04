@@ -1,7 +1,7 @@
 import { createSignal, createResource, Show, For, type Component } from "solid-js";
 import {
   FiClock, FiCheck, FiX, FiChevronRight,
-  FiZap, FiCalendar, FiGlobe, FiGithub, FiArrowLeft, FiRefreshCw,
+  FiZap, FiCalendar, FiGlobe, FiGithub, FiRefreshCw,
   FiLoader, FiActivity
 } from "solid-icons/fi";
 import { listWorkflows, listWorkflowRuns, type WorkflowResponse, type WorkflowRunResponse } from "../../lib/api";
@@ -66,204 +66,22 @@ const formatRelativeTime = (ts?: string) => {
 };
 
 // =============================================================================
-// WORKFLOW RUN TRACE VIEW (step timeline)
-// =============================================================================
-
-const WorkflowRunTrace: Component<{
-  run: WorkflowRunResponse;
-  workflow?: WorkflowResponse;
-  onBack: () => void;
-}> = (props) => {
-  const steps = () => props.run.status.steps || [];
-
-  // Get the step definition from the workflow spec for prompt info
-  const getStepSpec = (stepName: string) =>
-    props.workflow?.spec.steps.find(s => s.name === stepName);
-
-  return (
-    <div class="flex flex-col h-full">
-      {/* Header */}
-      <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border">
-        <button
-          onClick={props.onBack}
-          class="p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-secondary transition-colors"
-        >
-          <FiArrowLeft class="w-3.5 h-3.5" />
-        </button>
-        <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-text truncate">{props.run.metadata.name}</p>
-          <div class="flex items-center gap-1.5 text-[10px] text-text-muted">
-            <span>{props.run.spec.workflowRef}</span>
-            <span class="text-border-hover">·</span>
-            <span>{formatRelativeTime(props.run.status.startTime || props.run.metadata.creationTimestamp)}</span>
-          </div>
-        </div>
-        {(() => {
-          const sc = getStatusConfig(props.run.status.phase);
-          const Icon = sc.icon;
-          return (
-            <span class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border ${sc.bg} ${sc.border} ${sc.color}`}>
-              <Icon class={`w-2.5 h-2.5 ${props.run.status.phase === "Running" ? "animate-spin" : ""}`} />
-              {props.run.status.phase || "Pending"}
-            </span>
-          );
-        })()}
-      </div>
-
-      {/* Run summary bar */}
-      <div class="shrink-0 px-3 py-2 bg-surface-2/50 border-b border-border flex items-center gap-3 text-[10px] text-text-muted">
-        <Show when={props.run.status.startTime}>
-          <div class="flex items-center gap-1">
-            <FiClock class="w-2.5 h-2.5" />
-            <span>{formatDuration(props.run.status.startTime, props.run.status.endTime)}</span>
-          </div>
-        </Show>
-        <div class="flex items-center gap-1">
-          <FiActivity class="w-2.5 h-2.5" />
-          <span>{steps().length} step{steps().length !== 1 ? "s" : ""}</span>
-        </div>
-        <Show when={steps().filter(s => s.phase === "Succeeded").length > 0}>
-          <div class="flex items-center gap-1">
-            <FiCheck class="w-2.5 h-2.5 text-success" />
-            <span>{steps().filter(s => s.phase === "Succeeded").length} passed</span>
-          </div>
-        </Show>
-        <Show when={steps().filter(s => s.phase === "Failed").length > 0}>
-          <div class="flex items-center gap-1">
-            <FiX class="w-2.5 h-2.5 text-red-400" />
-            <span>{steps().filter(s => s.phase === "Failed").length} failed</span>
-          </div>
-        </Show>
-      </div>
-
-      {/* Steps Timeline */}
-      <div class="flex-1 overflow-y-auto px-3 py-3">
-        <Show
-          when={steps().length > 0}
-          fallback={
-            <div class="flex flex-col items-center justify-center py-8 text-text-muted">
-              <FiActivity class="w-6 h-6 mb-2 opacity-30" />
-              <p class="text-xs">No step data available</p>
-            </div>
-          }
-        >
-          <div class="relative">
-            {/* Vertical line */}
-            <div class="absolute left-[11px] top-3 bottom-3 w-px bg-border" />
-
-            <For each={steps()}>
-              {(step, index) => {
-                const sc = getStatusConfig(step.phase);
-                const Icon = sc.icon;
-                const spec = getStepSpec(step.name);
-                const [expanded, setExpanded] = createSignal(step.phase === "Failed");
-                const isLast = () => index() === steps().length - 1;
-
-                return (
-                  <div class={`relative pl-8 ${isLast() ? "" : "pb-4"}`}>
-                    {/* Node dot */}
-                    <div class={`absolute left-0 top-0.5 w-[23px] h-[23px] rounded-full flex items-center justify-center border-2 ${
-                      step.phase === "Running" 
-                        ? "bg-accent/20 border-accent" 
-                        : step.phase === "Succeeded"
-                          ? "bg-success/20 border-success"
-                          : step.phase === "Failed"
-                            ? "bg-red-400/20 border-red-400"
-                            : "bg-surface-2 border-border"
-                    }`}>
-                      <Icon class={`w-2.5 h-2.5 ${sc.color} ${step.phase === "Running" ? "animate-spin" : ""}`} />
-                    </div>
-
-                    {/* Step card */}
-                    <div class="bg-surface-2 rounded-lg border border-border overflow-hidden">
-                      <button
-                        onClick={() => setExpanded(!expanded())}
-                        class="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover/30 transition-colors"
-                      >
-                        <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-1.5">
-                            <span class="text-xs font-medium text-text">{step.name}</span>
-                            <span class={`text-[10px] px-1 py-px rounded ${sc.bg} ${sc.color} font-medium`}>
-                              {step.phase}
-                            </span>
-                          </div>
-                          <Show when={spec}>
-                            <p class="text-[10px] text-text-muted truncate mt-0.5">
-                              Agent: {spec!.agent}
-                            </p>
-                          </Show>
-                        </div>
-                        <Show when={step.startTime}>
-                          <span class="text-[10px] text-text-muted shrink-0 tabular-nums">
-                            {formatDuration(step.startTime, step.endTime)}
-                          </span>
-                        </Show>
-                        <FiChevronRight
-                          class={`w-3 h-3 text-text-muted shrink-0 transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
-                        />
-                      </button>
-
-                      <Show when={expanded()}>
-                        <div class="border-t border-border px-2.5 py-2 space-y-2">
-                          {/* Agent + Prompt */}
-                          <Show when={spec}>
-                            <div>
-                              <p class="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Prompt</p>
-                              <p class="text-[11px] text-text-secondary font-mono whitespace-pre-wrap max-h-20 overflow-y-auto leading-relaxed">
-                                {spec!.prompt}
-                              </p>
-                            </div>
-                          </Show>
-
-                          {/* Output */}
-                          <Show when={step.output}>
-                            <div>
-                              <p class="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Output</p>
-                              <div class="bg-background rounded border border-border px-2 py-1.5 max-h-24 overflow-y-auto">
-                                <p class="text-[11px] text-text-secondary font-mono whitespace-pre-wrap leading-relaxed">
-                                  {step.output}
-                                </p>
-                              </div>
-                            </div>
-                          </Show>
-
-                          {/* Timing */}
-                          <Show when={step.startTime}>
-                            <div class="flex items-center gap-3 text-[10px] text-text-muted">
-                              <span>Started: {new Date(step.startTime!).toLocaleTimeString()}</span>
-                              <Show when={step.endTime}>
-                                <span>Finished: {new Date(step.endTime!).toLocaleTimeString()}</span>
-                              </Show>
-                            </div>
-                          </Show>
-                        </div>
-                      </Show>
-                    </div>
-                  </div>
-                );
-              }}
-            </For>
-          </div>
-        </Show>
-      </div>
-    </div>
-  );
-};
-
-// =============================================================================
-// WORKFLOW LIST PANEL
+// WORKFLOW LIST PANEL (sidebar browser — always visible, never switches to trace)
 // =============================================================================
 
 interface WorkflowPanelProps {
   namespace?: string;
+  /** Called when a run row is clicked — MainApp renders the detail in center panel */
+  onSelectRun?: (run: WorkflowRunResponse, workflow: WorkflowResponse) => void;
+  /** Called when the selection is cleared */
+  onDeselectRun?: () => void;
 }
 
 const WorkflowPanel: Component<WorkflowPanelProps> = (props) => {
-  // View state: list | trace
-  const [view, setView] = createSignal<"list" | "trace">("list");
-  const [selectedRun, setSelectedRun] = createSignal<WorkflowRunResponse | null>(null);
-  const [selectedWorkflow, setSelectedWorkflow] = createSignal<WorkflowResponse | null>(null);
-  const [expandedWorkflow, setExpandedWorkflow] = createSignal<string | null>(null);
+  // Track which run is "active" (highlighted) in the sidebar
+  const [selectedRunName, setSelectedRunName] = createSignal<string | null>(null);
+  // Track collapsed workflows — all expanded by default
+  const [collapsedWorkflows, setCollapsedWorkflows] = createSignal<Set<string>>(new Set());
 
   // Data
   const [workflows, { refetch: refetchWorkflows }] = createResource(
@@ -275,7 +93,7 @@ const WorkflowPanel: Component<WorkflowPanelProps> = (props) => {
     (ns) => listWorkflowRuns(ns)
   );
 
-  // Get runs for a specific workflow
+  // Get runs for a specific workflow, sorted newest first
   const runsForWorkflow = (workflowName: string) =>
     (runs() || []).filter(r => r.spec.workflowRef === workflowName)
       .sort((a, b) => {
@@ -289,173 +107,223 @@ const WorkflowPanel: Component<WorkflowPanelProps> = (props) => {
     refetchRuns();
   };
 
-  const openRunTrace = (run: WorkflowRunResponse, workflow: WorkflowResponse) => {
-    setSelectedRun(run);
-    setSelectedWorkflow(workflow);
-    setView("trace");
+  const selectRun = (run: WorkflowRunResponse, workflow: WorkflowResponse) => {
+    setSelectedRunName(run.metadata.name);
+    props.onSelectRun?.(run, workflow);
   };
 
   return (
     <div class="flex flex-col h-full">
-      <Show when={view() === "trace" && selectedRun()}>
-        <WorkflowRunTrace
-          run={selectedRun()!}
-          workflow={selectedWorkflow() || undefined}
-          onBack={() => {
-            setView("list");
-            setSelectedRun(null);
-            setSelectedWorkflow(null);
-          }}
-        />
-      </Show>
-
-      <Show when={view() === "list"}>
-        {/* Header */}
-        <div class="shrink-0 flex items-center justify-between px-3 py-2">
-          <span class="section-label">Workflows</span>
+      {/* Header — matches chat header pattern */}
+      <div class="flex items-center justify-between px-4 pt-3 pb-2">
+        <span class="text-[11px] font-semibold uppercase tracking-widest text-text-muted/70">Workflows</span>
+        <div class="flex items-center gap-0.5">
           <button
             onClick={handleRefresh}
-            class="p-1 text-text-muted hover:text-text-secondary rounded transition-colors"
-            title="Refresh"
+            class="p-1.5 text-text-muted/60 hover:text-text hover:bg-surface-hover rounded-md transition-all duration-150 cursor-pointer"
+            title="Refresh workflows"
+            aria-label="Refresh workflow list"
           >
-            <FiRefreshCw class={`w-3 h-3 ${workflows.loading || runs.loading ? "animate-spin" : ""}`} />
+            <FiRefreshCw class={`w-3.5 h-3.5 ${workflows.loading || runs.loading ? "animate-spin" : ""}`} />
           </button>
         </div>
+      </div>
 
-        {/* Loading */}
-        <Show when={workflows.loading}>
-          <div class="flex items-center justify-center py-4">
-            <div class="w-3.5 h-3.5 border-2 border-text-muted/30 border-t-text-muted rounded-full animate-spin" />
-            <span class="ml-2 text-xs text-text-muted">Loading...</span>
-          </div>
-        </Show>
+      {/* Loading */}
+      <Show when={workflows.loading}>
+        <div class="flex items-center justify-center py-4">
+          <div class="w-3.5 h-3.5 border-2 border-text-muted/30 border-t-text-muted rounded-full animate-spin" />
+          <span class="ml-2 text-xs text-text-muted">Loading...</span>
+        </div>
+      </Show>
 
-        {/* Workflow list */}
-        <Show when={!workflows.loading}>
-          <div class="flex-1 overflow-y-auto px-1.5 pb-2">
-            <Show
-              when={workflows() && workflows()!.length > 0}
-              fallback={
-                <div class="flex flex-col items-center justify-center py-8 text-text-muted">
-                  <FiZap class="w-6 h-6 mb-2 opacity-30" />
-                  <p class="text-xs">No workflows found</p>
-                  <p class="text-[10px] mt-0.5 text-text-muted/60">Workflows will appear here when created</p>
-                </div>
-              }
-            >
-              <For each={workflows()}>
-                {(workflow) => {
-                  const wfRuns = () => runsForWorkflow(workflow.metadata.name);
-                  const isExpanded = () => expandedWorkflow() === workflow.metadata.name;
-                  const TriggerIcon = triggerIcon(workflow);
-                  const lastStatus = () => {
-                    const last = wfRuns()[0];
-                    return last ? last.status.phase : null;
-                  };
-                  const sc = () => lastStatus() ? getStatusConfig(lastStatus()!) : null;
+      {/* Workflow list */}
+      <Show when={!workflows.loading}>
+        <div class="px-2 pb-2" role="list" aria-label="Workflows">
+          <Show
+            when={workflows() && workflows()!.length > 0}
+            fallback={
+              <div class="flex flex-col items-center justify-center py-8 text-text-muted">
+                <FiZap class="w-6 h-6 mb-2 opacity-30" />
+                <p class="text-xs">No workflows found</p>
+                <p class="text-[10px] mt-0.5 text-text-muted/60">Workflows will appear here when created</p>
+              </div>
+            }
+          >
+            <For each={workflows()}>
+              {(workflow) => {
+                const wfRuns = () => runsForWorkflow(workflow.metadata.name);
+                const isExpanded = () => !collapsedWorkflows().has(workflow.metadata.name);
+                const TriggerIcon = triggerIcon(workflow);
+                const lastStatus = () => {
+                  const last = wfRuns()[0];
+                  return last ? last.status.phase : null;
+                };
 
-                  return (
-                    <div class="mb-1">
-                      {/* Workflow row */}
+                return (
+                  <>
+                    {/* Workflow group header — matches chat time-group separator */}
+                    <div class="px-2 pt-3 pb-1.5 first:pt-1" role="presentation">
                       <button
-                        onClick={() => setExpandedWorkflow(isExpanded() ? null : workflow.metadata.name)}
-                        class={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors group ${
-                          isExpanded() ? "bg-surface-2 text-text" : "hover:bg-surface-hover text-text-secondary"
-                        }`}
+                        onClick={() => {
+                          const next = new Set(collapsedWorkflows());
+                          if (next.has(workflow.metadata.name)) {
+                            next.delete(workflow.metadata.name);
+                          } else {
+                            next.add(workflow.metadata.name);
+                          }
+                          setCollapsedWorkflows(next);
+                        }}
+                        class="w-full flex items-center gap-2 cursor-pointer group"
                       >
-                        <div class={`w-6 h-6 rounded flex items-center justify-center shrink-0 ${
-                          isExpanded() ? "bg-accent/10" : "bg-surface-2"
-                        }`}>
-                          <FiZap class={`w-3 h-3 ${isExpanded() ? "text-accent" : "text-text-muted"}`} />
-                        </div>
-                        <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-1.5">
-                            <span class="text-xs font-medium truncate">{workflow.metadata.name}</span>
-                            <Show when={sc()}>
-                              <span class={`w-1.5 h-1.5 rounded-full ${
-                                lastStatus() === "Succeeded" ? "bg-success" :
-                                lastStatus() === "Failed" ? "bg-red-400" :
-                                lastStatus() === "Running" ? "bg-accent animate-pulse" :
-                                "bg-text-muted"
-                              }`} />
-                            </Show>
-                          </div>
-                          <div class="flex items-center gap-1 text-[10px] text-text-muted leading-tight">
-                            <TriggerIcon class="w-2.5 h-2.5" />
-                            <span class="truncate">{triggerLabel(workflow)}</span>
-                          </div>
-                        </div>
                         <div class="flex items-center gap-1.5 shrink-0">
-                          <Show when={workflow.status.runCount > 0}>
-                            <span class="text-[10px] text-text-muted tabular-nums">
-                              {workflow.status.runCount} runs
-                            </span>
+                          <FiZap class={`w-2.5 h-2.5 ${isExpanded() ? "text-accent" : "text-text-muted/50"}`} />
+                          <span class="text-[10px] font-bold uppercase tracking-widest text-text-muted/50 group-hover:text-text-muted transition-colors">
+                            {workflow.metadata.name}
+                          </span>
+                          <Show when={lastStatus()}>
+                            <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              lastStatus() === "Succeeded" ? "bg-success" :
+                              lastStatus() === "Failed" ? "bg-red-400" :
+                              lastStatus() === "Running" ? "bg-accent animate-pulse" :
+                              "bg-text-muted/40"
+                            }`} />
                           </Show>
+                        </div>
+                        <div class="flex-1 h-px bg-border/40" />
+                        <div class="flex items-center gap-1 shrink-0">
+                          <span class="text-[10px] text-text-muted/40 tabular-nums">
+                            {wfRuns().length}
+                          </span>
                           <FiChevronRight
-                            class={`w-3 h-3 text-text-muted transition-transform duration-150 ${isExpanded() ? "rotate-90" : ""}`}
+                            class={`w-2.5 h-2.5 text-text-muted/40 transition-transform duration-150 ${isExpanded() ? "rotate-90" : ""}`}
                           />
                         </div>
                       </button>
-
-                      {/* Expanded: show runs */}
-                      <Show when={isExpanded()}>
-                        <div class="ml-4 mt-1 mb-1 space-y-0.5">
-                          {/* Steps overview */}
-                          <div class="px-2.5 py-1.5 text-[10px] text-text-muted">
-                            <span class="font-medium">{workflow.spec.steps.length} steps:</span>{" "}
-                            {workflow.spec.steps.map(s => s.name).join(" → ")}
-                          </div>
-
-                          {/* Recent runs */}
-                          <Show
-                            when={wfRuns().length > 0}
-                            fallback={
-                              <p class="px-2.5 py-2 text-[10px] text-text-muted/60">No runs yet</p>
-                            }
-                          >
-                            <div class="px-1">
-                              <p class="text-[10px] text-text-muted font-medium px-1.5 py-1">Recent Runs</p>
-                              <For each={wfRuns().slice(0, 5)}>
-                                {(run) => {
-                                  const rsc = getStatusConfig(run.status.phase);
-                                  const RunIcon = rsc.icon;
-                                  return (
-                                    <button
-                                      onClick={() => openRunTrace(run, workflow)}
-                                      class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-hover transition-colors text-left group/run"
-                                    >
-                                      <RunIcon class={`w-3 h-3 shrink-0 ${rsc.color} ${run.status.phase === "Running" ? "animate-spin" : ""}`} />
-                                      <div class="flex-1 min-w-0">
-                                        <span class="text-[11px] text-text-secondary truncate block">
-                                          {run.metadata.name}
-                                        </span>
-                                      </div>
-                                      <div class="flex items-center gap-1.5 shrink-0">
-                                        <Show when={run.status.startTime}>
-                                          <span class="text-[10px] text-text-muted tabular-nums">
-                                            {formatDuration(run.status.startTime, run.status.endTime)}
-                                          </span>
-                                        </Show>
-                                        <span class="text-[10px] text-text-muted tabular-nums opacity-0 group-hover/run:opacity-100 transition-opacity">
-                                          {formatRelativeTime(run.status.startTime || run.metadata.creationTimestamp)}
-                                        </span>
-                                        <FiChevronRight class="w-2.5 h-2.5 text-text-muted opacity-0 group-hover/run:opacity-100 transition-opacity" />
-                                      </div>
-                                    </button>
-                                  );
-                                }}
-                              </For>
-                            </div>
-                          </Show>
-                        </div>
-                      </Show>
                     </div>
-                  );
-                }}
-              </For>
-            </Show>
-          </div>
-        </Show>
+
+                    {/* Expanded: trigger info + run rows */}
+                    <Show when={isExpanded()}>
+                      {/* Trigger info line */}
+                      <div class="px-4 pb-1.5">
+                        <div class="flex items-center gap-1.5 text-[10px] text-text-muted/60">
+                          <TriggerIcon class="w-2.5 h-2.5" />
+                          <span>{triggerLabel(workflow)}</span>
+                          <span class="text-border-hover">·</span>
+                          <span>{(workflow.spec.steps || []).length} steps: {(workflow.spec.steps || []).map(s => s.name).join(" \u2192 ")}</span>
+                        </div>
+                      </div>
+
+                      {/* Run rows — matches chat session rows */}
+                      <Show
+                        when={wfRuns().length > 0}
+                        fallback={
+                          <div class="px-4 py-2">
+                            <p class="text-[10px] text-text-muted/50">No runs yet</p>
+                          </div>
+                        }
+                      >
+                        <For each={wfRuns().slice(0, 8)}>
+                          {(run) => {
+                            const rsc = getStatusConfig(run.status.phase);
+                            const RunIcon = rsc.icon;
+                            const isActive = () => selectedRunName() === run.metadata.name;
+                            const isRunning = () => run.status.phase === "Running";
+                            const isFailed = () => run.status.phase === "Failed";
+
+                            // Left accent color — matches chat pattern
+                            const accentColor = () => {
+                              if (isRunning()) return "bg-accent";
+                              if (isFailed()) return "bg-red-400";
+                              if (isActive()) return "bg-primary";
+                              return "bg-transparent";
+                            };
+
+                            // Left indicator — matches chat left indicator pattern
+                            const leftIndicator = () => {
+                              if (isRunning()) {
+                                return (
+                                  <span class="relative flex h-2.5 w-2.5">
+                                    <span class="status-dot-glow absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent" />
+                                  </span>
+                                );
+                              }
+                              if (isFailed()) return <span class="w-2.5 h-2.5 rounded-full bg-red-400" />;
+                              return <RunIcon class={`w-3.5 h-3.5 ${isActive() ? "text-text-secondary" : "text-text-muted"}`} />;
+                            };
+
+                            // Status line — matches chat status line pattern
+                            const statusLine = () => {
+                              if (isRunning()) return <span class="text-accent">Running...</span>;
+                              if (isFailed()) return <span class="text-red-400">Failed</span>;
+                              return formatRelativeTime(run.status.startTime || run.metadata.creationTimestamp);
+                            };
+
+                            return (
+                              <button
+                                onClick={() => selectRun(run, workflow)}
+                                class={`relative w-full flex flex-col text-left transition-all duration-150 group rounded-lg mb-0.5 ${
+                                  isRunning()
+                                    ? "session-row-processing session-row-processing--accent"
+                                    : ""
+                                } ${
+                                  isActive()
+                                    ? "bg-primary/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.08)] ring-1 ring-primary/20 z-10"
+                                    : "hover:bg-surface-hover/70 text-text-muted"
+                                }`}
+                                role="listitem"
+                                aria-current={isActive() ? "true" : undefined}
+                                aria-label={`Run: ${run.metadata.name}`}
+                              >
+                                <div class={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full transition-colors duration-200 ${accentColor()}`} />
+                                <div class="flex items-start gap-2.5 pl-2.5 pr-3 py-2.5 w-full">
+                                  {/* Left indicator */}
+                                  <div class="flex items-center justify-center w-4 h-4 mt-0.5 shrink-0">
+                                    {leftIndicator()}
+                                  </div>
+                                  {/* Content */}
+                                  <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                      <p class={`text-[13px] truncate leading-snug flex-1 ${
+                                        isActive() ? "text-text font-medium"
+                                          : "text-text-secondary group-hover:text-text"
+                                      }`}>
+                                        {run.metadata.name}
+                                      </p>
+                                    </div>
+                                    {/* Status + duration */}
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                      <span class="text-[10px] text-text-muted/70 tabular-nums">
+                                        {statusLine()}
+                                      </span>
+                                      <Show when={run.status.startTime}>
+                                        <span class="text-[10px] font-mono flex items-center gap-1 text-text-muted/70">
+                                          <FiClock class="w-2.5 h-2.5" />
+                                          {formatDuration(run.status.startTime, run.status.endTime)}
+                                        </span>
+                                      </Show>
+                                      <Show when={(run.status.steps?.length || 0) > 0}>
+                                        <span class="text-[10px] flex items-center gap-1 text-text-muted/70">
+                                          <FiActivity class="w-2.5 h-2.5" />
+                                          {run.status.steps!.length}
+                                        </span>
+                                      </Show>
+                                    </div>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          }}
+                        </For>
+                      </Show>
+                    </Show>
+                  </>
+                );
+              }}
+            </For>
+          </Show>
+        </div>
       </Show>
     </div>
   );

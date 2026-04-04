@@ -120,6 +120,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/workflows", h.ListWorkflows)
 			r.Get("/workflows/{namespace}/{name}", h.GetWorkflow)
 			r.Get("/workflowruns", h.ListWorkflowRuns)
+			r.Get("/workflowruns/{namespace}/{name}", h.GetWorkflowRun)
 
 			// Channels
 			r.Get("/channels", h.ListChannels)

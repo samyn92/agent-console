@@ -2,7 +2,8 @@ import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
 import {
   FiCpu, FiChevronDown, FiChevronRight, FiTool,
   FiTerminal, FiFileText, FiEdit, FiSearch, FiGlobe, FiUsers,
-  FiEye, FiFile, FiCheck, FiX,
+  FiEye, FiFile, FiCheck, FiX, FiLayers,
+  FiShield, FiServer, FiBox, FiAlertTriangle, FiSlash,
 } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
@@ -12,6 +13,7 @@ import {
   toolThemes,
   getCategoryIcon,
   getCategoryLabel,
+  getCapabilityDisplayLabel,
 } from "../../lib/capability-themes";
 import {
   accentMap,
@@ -141,15 +143,27 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
     const result: CapabilityInfo[] = [];
 
     for (const ref of refs) {
-      const name = ref.name.toLowerCase();
+      const capability = allCapabilities.find(s => s.metadata.name === ref.name);
       let type: CapabilityType | null = null;
-      if (name.includes("kubectl") || name.includes("kubernetes")) type = "kubernetes";
-      else if (name.includes("helm")) type = "helm";
-      else if (name.includes("github")) type = "github";
-      else if (name.includes("gitlab")) type = "gitlab";
+
+      // Use CRD containerType if available
+      if (capability?.spec?.type === "Container" && capability.spec.container?.containerType) {
+        const ct = capability.spec.container.containerType;
+        if (ct === "kubernetes" || ct === "helm" || ct === "github" || ct === "gitlab") {
+          type = ct;
+        }
+      }
+
+      // Fallback to name-based detection
+      if (!type) {
+        const name = ref.name.toLowerCase();
+        if (name.includes("kubectl") || name.includes("kubernetes")) type = "kubernetes";
+        else if (name.includes("helm")) type = "helm";
+        else if (name.includes("github")) type = "github";
+        else if (name.includes("gitlab")) type = "gitlab";
+      }
 
       if (type && !result.some(s => s.type === type)) {
-        const capability = allCapabilities.find(s => s.metadata.name === ref.name);
         result.push({ type, capabilityRef: ref.name, capability });
       }
     }
@@ -383,18 +397,179 @@ const AgentDetailPanel: Component<AgentDetailPanelProps> = (props) => {
             </div>
           </Show>
 
-          {/* System Prompt — collapsible */}
-          <Show when={props.agent.spec.identity?.systemPrompt}>
-            <details class="group">
+          {/* Agent Details — system prompt, capabilities, tools in one collapsible */}
+          <Show when={props.agent.spec.identity?.systemPrompt || (props.agent.spec.capabilityRefs?.length ?? 0) > 0 || props.agent.spec.tools}>
+            <details class="group" open>
               <summary class="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer hover:text-text-secondary select-none py-0.5">
                 <FiChevronRight class="w-3 h-3 group-open:rotate-90 transition-transform" />
-                <FiFileText class="w-3 h-3" />
-                <span class="font-medium">System Prompt</span>
+                <FiLayers class="w-3 h-3" />
+                <span class="font-medium">Agent Details</span>
               </summary>
-              <div class="mt-1 bg-surface-2 rounded-md border border-border">
-                <div class="px-2.5 py-2 text-[11px] font-mono text-text-secondary whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
-                  {props.agent.spec.identity?.systemPrompt}
-                </div>
+              <div class="mt-1.5 space-y-2">
+                {/* System Prompt */}
+                <Show when={settingsStore.showSystemPrompts() && props.agent.spec.identity?.systemPrompt}>
+                  <details class="rounded-lg border border-border/50 overflow-hidden group/sp">
+                    <summary class="px-2.5 py-1.5 bg-surface-2/80 flex items-center gap-1.5 cursor-pointer hover:bg-surface-2 transition-colors select-none">
+                      <FiChevronRight class="w-3 h-3 text-text-muted/40 group-open/sp:rotate-90 transition-transform" />
+                      <FiFileText class="w-3 h-3 text-text-muted/50" />
+                      <span class="text-[10px] font-medium text-text-muted/70 uppercase tracking-wider">System Prompt</span>
+                    </summary>
+                    <div class="px-2.5 py-2 bg-surface-2/30 border-t border-border/30">
+                      <div class="text-[11px] font-mono text-text-secondary/80 whitespace-pre-wrap max-h-28 overflow-y-auto leading-relaxed scrollbar-thin">
+                        {props.agent.spec.identity?.systemPrompt}
+                      </div>
+                    </div>
+                  </details>
+                </Show>
+
+                {/* Capability cards — rich metadata */}
+                <Show when={(props.agent.spec.capabilityRefs?.length ?? 0) > 0}>
+                  <div class="space-y-1.5">
+                    <For each={props.agent.spec.capabilityRefs || []}>
+                      {(ref) => {
+                        const cap = () => (props.capabilities || []).find(c => c.metadata.name === ref.name);
+                        const cat = () => detectToolCategory(ref.alias || ref.name, cap());
+                        const theme = () => toolThemes[cat()];
+                        const Icon = () => getCategoryIcon(cat());
+                        const displayLabel = () => getCapabilityDisplayLabel(cat(), cap());
+                        const fallbackLabel = () => getCategoryLabel(cat()) || ref.alias || ref.name;
+                        const capType = () => cap()?.spec?.type || "";
+                        const description = () => cap()?.spec?.description;
+                        const phase = () => cap()?.status?.phase;
+
+                        // Permission summary
+                        const perms = () => cap()?.spec?.permissions;
+                        const allowCount = () => perms()?.allow?.length || 0;
+                        const approveCount = () => perms()?.approve?.length || 0;
+                        const denyCount = () => perms()?.deny?.length || 0;
+                        const hasPerms = () => allowCount() > 0 || approveCount() > 0 || denyCount() > 0;
+
+                        // Type-specific metadata
+                        const containerImage = () => {
+                          const img = cap()?.spec?.container?.image || cap()?.spec?.image;
+                          if (!img) return null;
+                          const name = img.split("/").pop()?.split(":")[0] || img;
+                          const tag = img.includes(":") ? img.split(":").pop() : null;
+                          return { name, tag, full: img };
+                        };
+                        const mcpMode = () => cap()?.spec?.mcp?.mode;
+                        const mcpUrl = () => cap()?.spec?.mcp?.url;
+
+                        return (
+                          <div class={`rounded-lg border overflow-hidden transition-colors ${theme().border || "border-border/50"}`}>
+                            {/* Card header — colored top edge */}
+                            <div class={`px-2.5 py-1.5 flex items-center gap-2 bg-gradient-to-r ${theme().headerBg || "from-surface-2/80 to-surface-2/40"}`}>
+                              {(() => { const I = Icon(); return <I class={`w-3.5 h-3.5 ${theme().iconColor} shrink-0`} />; })()}
+                              <span class="text-[11px] font-semibold text-text truncate flex-1">
+                                {ref.alias || ref.name}
+                              </span>
+                              <span class={`text-[9px] px-1.5 py-0.5 rounded font-medium ${theme().badge || "bg-surface-2 text-text-muted"}`}>
+                                {displayLabel() || fallbackLabel()}
+                              </span>
+                              <Show when={phase()}>
+                                <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  phase() === "Ready" ? "bg-success" : phase() === "Failed" ? "bg-error" : "bg-warning"
+                                }`} title={phase()} />
+                              </Show>
+                            </div>
+
+                            {/* Card body — metadata */}
+                            <div class="px-2.5 py-1.5 bg-surface-2/20 space-y-1.5">
+                              {/* Description */}
+                              <Show when={description()}>
+                                <p class="text-[10px] text-text-muted leading-relaxed line-clamp-2">
+                                  {description()}
+                                </p>
+                              </Show>
+
+                              {/* Metadata row */}
+                              <div class="flex items-center gap-1.5 flex-wrap">
+                                {/* Container: image */}
+                                <Show when={capType() === "Container" && containerImage()}>
+                                  <span class="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-surface border border-border/40 text-text-muted font-mono" title={containerImage()!.full}>
+                                    <FiBox class="w-2.5 h-2.5 text-text-muted/50" />
+                                    {containerImage()!.name}
+                                    <Show when={containerImage()!.tag}>
+                                      <span class="text-text-muted/40">:{containerImage()!.tag}</span>
+                                    </Show>
+                                  </span>
+                                </Show>
+
+                                {/* MCP: mode + url */}
+                                <Show when={capType() === "MCP" && mcpMode()}>
+                                  <span class="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-medium">
+                                    <FiServer class="w-2.5 h-2.5" />
+                                    {mcpMode()}
+                                  </span>
+                                </Show>
+                                <Show when={capType() === "MCP" && mcpUrl()}>
+                                  <span class="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-surface border border-border/40 text-text-muted font-mono truncate max-w-[180px]" title={mcpUrl()}>
+                                    {mcpUrl()!.replace(/^https?:\/\//, "")}
+                                  </span>
+                                </Show>
+
+                                {/* Audit badge */}
+                                <Show when={cap()?.spec?.audit}>
+                                  <span class="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium">
+                                    <FiEye class="w-2.5 h-2.5" />
+                                    Audit
+                                  </span>
+                                </Show>
+
+                                {/* Permissions summary */}
+                                <Show when={hasPerms()}>
+                                  <span class="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-surface border border-border/40 text-text-muted">
+                                    <FiShield class="w-2.5 h-2.5 text-text-muted/50" />
+                                    <Show when={allowCount() > 0}>
+                                      <span class="text-emerald-400">{allowCount()}</span>
+                                    </Show>
+                                    <Show when={approveCount() > 0}>
+                                      <span class="text-yellow-400">{approveCount()}</span>
+                                    </Show>
+                                    <Show when={denyCount() > 0}>
+                                      <span class="text-red-400">{denyCount()}</span>
+                                    </Show>
+                                  </span>
+                                </Show>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </Show>
+
+                {/* Enabled tools */}
+                <Show when={props.agent.spec.tools}>
+                  {(tools) => {
+                    const enabledTools = () => Object.entries(tools()).filter(([, v]) => v).map(([k]) => k);
+                    return (
+                      <Show when={enabledTools().length > 0}>
+                        <div class="rounded-lg border border-border/50 overflow-hidden">
+                          <div class="px-2.5 py-1.5 bg-surface-2/80 border-b border-border/30 flex items-center gap-1.5">
+                            <FiTool class="w-3 h-3 text-text-muted/50" />
+                            <span class="text-[10px] font-medium text-text-muted/70 uppercase tracking-wider">Built-in Tools</span>
+                            <span class="text-[9px] text-text-muted/40 ml-auto">{enabledTools().length}</span>
+                          </div>
+                          <div class="px-2.5 py-2 bg-surface-2/20 flex flex-wrap gap-1">
+                            <For each={enabledTools()}>
+                              {(tool) => {
+                                const ToolIcon = toolIconMap[tool] || FiTool;
+                                return (
+                                  <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] bg-surface/60 border border-border/40 rounded text-text-muted font-mono">
+                                    <ToolIcon class="w-2.5 h-2.5 text-text-muted/50" />
+                                    {tool}
+                                  </span>
+                                );
+                              }}
+                            </For>
+                          </div>
+                        </div>
+                      </Show>
+                    );
+                  }}
+                </Show>
               </div>
             </details>
           </Show>

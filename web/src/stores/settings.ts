@@ -7,18 +7,21 @@ import { createSignal, createRoot } from "solid-js";
 const STORAGE_KEY = "agent-console-ui-settings";
 
 interface UiSettings {
-  /** Compact mode: collapse tool cards (only errors expanded) */
-  compactMode: boolean;
-  /** Last selected agent key ("namespace/name") — restored on page load */
+  /** Last selected agent key ("namespace/name") -- restored on page load */
   selectedAgent: string | null;
   /** Show the resource browser panel in the left sidebar (in addition to the composer popover) */
   sidebarBrowser: boolean;
+  /** Per-tool default expansion state. Key = tool name, value = "expanded" | "collapsed" */
+  toolExpansionDefaults: Record<string, "expanded" | "collapsed">;
+  /** Show the system prompt section in the agent sidebar */
+  showSystemPrompts: boolean;
 }
 
 const DEFAULTS: UiSettings = {
-  compactMode: false,
   selectedAgent: null,
   sidebarBrowser: false,
+  toolExpansionDefaults: {},
+  showSystemPrompts: true,
 };
 
 function loadSettings(): UiSettings {
@@ -49,17 +52,31 @@ function createSettingsStore() {
     /** Read-only accessor for the full settings object */
     settings,
 
-    // -- compact mode --
-    compactMode: () => settings().compactMode,
-    setCompactMode: (v: boolean) => update({ compactMode: v }),
-
     // -- sidebar resource browser --
     sidebarBrowser: () => settings().sidebarBrowser,
     setSidebarBrowser: (v: boolean) => update({ sidebarBrowser: v }),
 
+    // -- show system prompts --
+    showSystemPrompts: () => settings().showSystemPrompts,
+    setShowSystemPrompts: (v: boolean) => update({ showSystemPrompts: v }),
+
     // -- selected agent persistence --
     selectedAgent: () => settings().selectedAgent,
     setSelectedAgent: (key: string | null) => update({ selectedAgent: key }),
+
+    // -- per-tool expansion defaults --
+    toolExpansionDefaults: () => settings().toolExpansionDefaults,
+    setToolExpansionDefault: (toolName: string, state: "expanded" | "collapsed") => {
+      const current = { ...settings().toolExpansionDefaults };
+      current[toolName] = state;
+      update({ toolExpansionDefaults: current });
+    },
+    /** Batch-set all known tools to the same state */
+    setAllToolExpansionDefaults: (tools: string[], state: "expanded" | "collapsed") => {
+      const current = { ...settings().toolExpansionDefaults };
+      for (const t of tools) current[t] = state;
+      update({ toolExpansionDefaults: current });
+    },
   };
 }
 

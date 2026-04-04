@@ -1,13 +1,14 @@
 import { createSignal, createResource, createEffect, Show, For, createMemo, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
 import { FiSettings, FiRefreshCw, FiMessageSquare, FiPlus, FiMoreVertical, FiCpu, FiSidebar, FiZap, FiGitCommit, FiMenu, FiMapPin } from "solid-icons/fi";
-import { listAgents, listCapabilities, listRepos, type AgentResponse } from "../lib/api";
+import { listAgents, listCapabilities, listRepos, type AgentResponse, type WorkflowRunResponse, type WorkflowResponse } from "../lib/api";
 import type { Session } from "../types/acp";
 import type { SelectedContext } from "../types/context";
 import ChatInterface from "../components/chat/ChatInterface";
 import AgentDetailPanel from "../components/agent/AgentDetailPanel";
 import ChatContextMenu from "../components/chat/ChatContextMenu";
 import WorkflowPanel from "../components/workflow/WorkflowPanel";
+import WorkflowRunDetail from "../components/workflow/WorkflowRunDetail";
 
 import ThreePanelLayout from "../components/layout/ThreePanelLayout";
 import { sessionStore } from "../stores/sessions";
@@ -31,6 +32,10 @@ const MainApp = () => {
   // State
   const [activeAgent, setActiveAgent] = createSignal<AgentResponse | null>(null);
   const [sidebarTab, setSidebarTab] = createSignal<SidebarTab>("chats");
+
+  // Workflow detail state (set by WorkflowPanel sidebar when a run is selected)
+  const [selectedWorkflowRun, setSelectedWorkflowRun] = createSignal<WorkflowRunResponse | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = createSignal<WorkflowResponse | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number; sessionId: string } | null>(null);
@@ -81,6 +86,14 @@ const MainApp = () => {
     const agent = activeAgent();
     if (agent) {
       sessionStore.setAgent(agent.metadata.namespace, agent.metadata.name);
+    }
+  });
+
+  // Clear workflow selection when switching away from workflows tab
+  createEffect(() => {
+    if (sidebarTab() !== "workflows") {
+      setSelectedWorkflowRun(null);
+      setSelectedWorkflow(null);
     }
   });
 
@@ -469,7 +482,13 @@ const MainApp = () => {
         <Show when={sidebarTab() === "workflows"}>
           {/* Workflows tab */}
           <div id="panel-workflows" role="tabpanel">
-            <WorkflowPanel namespace={activeAgent()?.metadata.namespace} />
+            <WorkflowPanel
+              namespace={activeAgent()?.metadata.namespace}
+              onSelectRun={(run, workflow) => {
+                setSelectedWorkflowRun(run);
+                setSelectedWorkflow(workflow);
+              }}
+            />
           </div>
         </Show>
       </div>
@@ -563,16 +582,26 @@ const MainApp = () => {
 
       {/* ===== Workflows Center View ===== */}
       <Show when={sidebarTab() === "workflows"}>
-        <div class="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div class="w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center mb-4">
-            <FiZap class="w-7 h-7 text-text-muted" />
-          </div>
-          <h2 class="text-lg font-semibold text-text mb-1.5">Workflow Runs</h2>
-          <p class="text-sm text-text-muted max-w-sm">
-            Select a workflow from the sidebar to view its runs, or trigger a new run.
-            The process pipeline view will appear here.
-          </p>
-        </div>
+        <Show
+          when={selectedWorkflowRun()}
+          fallback={
+            <div class="flex-1 flex flex-col items-center justify-center text-center px-8">
+              <div class="w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center mb-4">
+                <FiZap class="w-7 h-7 text-text-muted" />
+              </div>
+              <h2 class="text-lg font-semibold text-text mb-1.5">Workflow Runs</h2>
+              <p class="text-sm text-text-muted max-w-sm">
+                Select a workflow from the sidebar to view its runs, or trigger a new run.
+                The process pipeline view will appear here.
+              </p>
+            </div>
+          }
+        >
+          <WorkflowRunDetail
+            run={selectedWorkflowRun()!}
+            workflow={selectedWorkflow() || undefined}
+          />
+        </Show>
       </Show>
 
       {/* ===== Chats Center View ===== */}
