@@ -2,7 +2,7 @@ import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
 import { FiX } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
-import { getContextId, getContextLabel } from "./ContextBar";
+import { getContextLabel } from "./ContextBar";
 import {
   accentMap,
   capabilityMeta,
