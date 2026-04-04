@@ -1,5 +1,5 @@
 import { createSignal, Show, For, type Component, onCleanup } from "solid-js";
-import { FiPlus, FiX } from "solid-icons/fi";
+import { FiX } from "solid-icons/fi";
 import type { AgentResponse, CapabilityResponse, RepoResponse } from "../../lib/api";
 import type { SelectedContext } from "../../types/context";
 import { getContextId, getContextLabel } from "./ContextBar";
@@ -44,21 +44,11 @@ const ResourceBrowserPopover: Component<ResourceBrowserPopoverProps> = (props) =
   const open = () => {
     setIsOpen(true);
     document.addEventListener("mousedown", handleClickOutside);
-    // Auto-select first capability if none active
-    const caps = detectedCapabilities();
-    if (caps.length > 0 && !activeType()) {
-      setActiveType(caps[0].type);
-    }
   };
 
   const close = () => {
     setIsOpen(false);
     document.removeEventListener("mousedown", handleClickOutside);
-  };
-
-  const toggle = () => {
-    if (isOpen()) close();
-    else open();
   };
 
   onCleanup(() => {
@@ -104,61 +94,64 @@ const ResourceBrowserPopover: Component<ResourceBrowserPopoverProps> = (props) =
   return (
     <Show when={hasCapabilities()}>
       <div class="relative" ref={popoverRef}>
-        {/* Trigger button */}
-        <button
-          onClick={toggle}
-          class={`h-7 w-7 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer ${
-            isOpen()
-              ? "bg-accent/15 text-accent ring-1 ring-accent/30"
-              : selectedCount() > 0
-                ? "bg-accent/10 text-accent hover:bg-accent/15"
-                : "text-text-muted/50 hover:text-text-muted hover:bg-surface-hover"
-          }`}
-          title="Add resource context"
-          aria-label="Browse resources"
-        >
-          <FiPlus class={`w-4 h-4 transition-transform duration-150 ${isOpen() ? "rotate-45" : ""}`} />
-          <Show when={selectedCount() > 0 && !isOpen()}>
-            <span class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-accent text-[8px] font-bold text-white flex items-center justify-center">
-              {selectedCount()}
-            </span>
-          </Show>
-        </button>
+        {/* Trigger: capability-type pills */}
+        <div class="flex items-center gap-1">
+          <For each={detectedCapabilities()}>
+            {(info) => {
+              const accent = () => accentMap[info.type];
+              const meta = () => capabilityMeta[info.type];
+              const Icon = meta().icon;
+              const count = () => contextsByType(info.type).length;
+              const isActive = () => isOpen() && activeType() === info.type;
+
+              return (
+                <button
+                  onClick={() => {
+                    if (isActive()) {
+                      close();
+                    } else {
+                      setActiveType(info.type);
+                      if (!isOpen()) open();
+                    }
+                  }}
+                  class={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
+                    isActive()
+                      ? `${accent().borderActive} bg-gradient-to-br ${accent().bg} shadow-sm`
+                      : `${accent().border} hover:${accent().bg} bg-transparent`
+                  }`}
+                  title={`Browse ${meta().label} resources`}
+                >
+                  <Icon class={`w-3 h-3 ${accent().iconColor}`} />
+                  <span class={isActive() ? "text-text" : "text-text-muted"}>{meta().label}</span>
+                  <Show when={count() > 0}>
+                    <span class={`text-[9px] font-bold px-1 py-0.5 rounded-full leading-none ${accent().badge}`}>
+                      {count()}
+                    </span>
+                  </Show>
+                </button>
+              );
+            }}
+          </For>
+        </div>
 
         {/* Popover panel - floating above the composer */}
         <Show when={isOpen()}>
           <div class="absolute bottom-full left-0 mb-2 w-[380px] max-h-[60vh] bg-surface border border-border/60 rounded-xl shadow-xl overflow-hidden z-50 flex flex-col animate-popover-in">
-            {/* Header with capability type tabs */}
-            <div class="flex items-center gap-1 px-2 py-1.5 border-b border-border/40 bg-surface/80 backdrop-blur-sm">
-              <For each={detectedCapabilities()}>
-                {(info) => {
-                  const accent = () => accentMap[info.type];
-                  const meta = () => capabilityMeta[info.type];
-                  const isActive = () => activeType() === info.type;
+            {/* Minimal header with active type label + close */}
+            <div class="flex items-center justify-between px-3 py-1.5 border-b border-border/40 bg-surface/80 backdrop-blur-sm">
+              <Show when={activeType()}>
+                {(_type) => {
+                  const meta = () => capabilityMeta[activeType()!];
+                  const accent = () => accentMap[activeType()!];
                   const Icon = meta().icon;
-                  const count = () => contextsByType(info.type).length;
-
                   return (
-                    <button
-                      onClick={() => setActiveType(info.type)}
-                      class={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
-                        isActive()
-                          ? `${accent().borderActive} bg-gradient-to-br ${accent().bg} shadow-sm`
-                          : `border-transparent hover:bg-surface-hover/60`
-                      }`}
-                    >
-                      <Icon class={`w-3.5 h-3.5 ${isActive() ? accent().iconColor : "text-text-muted"}`} />
-                      <span class={isActive() ? "text-text" : "text-text-muted"}>{meta().label}</span>
-                      <Show when={count() > 0}>
-                        <span class={`text-[9px] font-bold px-1 py-0.5 rounded-full leading-none ${accent().badge}`}>
-                          {count()}
-                        </span>
-                      </Show>
-                    </button>
+                    <span class="inline-flex items-center gap-1.5 text-[12px] font-medium">
+                      <Icon class={`w-3.5 h-3.5 ${accent().iconColor}`} />
+                      <span class="text-text">{meta().label}</span>
+                    </span>
                   );
                 }}
-              </For>
-              <div class="flex-1" />
+              </Show>
               <button
                 onClick={close}
                 class="p-1 text-text-muted/50 hover:text-text-muted rounded transition-colors cursor-pointer"

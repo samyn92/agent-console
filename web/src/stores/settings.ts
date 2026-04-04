@@ -11,11 +11,14 @@ interface UiSettings {
   compactMode: boolean;
   /** Last selected agent key ("namespace/name") — restored on page load */
   selectedAgent: string | null;
+  /** Show the resource browser panel in the left sidebar (in addition to the composer popover) */
+  sidebarBrowser: boolean;
 }
 
 const DEFAULTS: UiSettings = {
   compactMode: false,
   selectedAgent: null,
+  sidebarBrowser: false,
 };
 
 function loadSettings(): UiSettings {
@@ -49,6 +52,10 @@ function createSettingsStore() {
     // -- compact mode --
     compactMode: () => settings().compactMode,
     setCompactMode: (v: boolean) => update({ compactMode: v }),
+
+    // -- sidebar resource browser --
+    sidebarBrowser: () => settings().sidebarBrowser,
+    setSidebarBrowser: (v: boolean) => update({ sidebarBrowser: v }),
 
     // -- selected agent persistence --
     selectedAgent: () => settings().selectedAgent,

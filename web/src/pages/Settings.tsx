@@ -404,6 +404,12 @@ const SettingsPage: Component = () => {
           checked={settings().showSystemPrompts}
           onChange={(v) => setSettings({ ...settings(), showSystemPrompts: v })}
         />
+        <Toggle
+          label="Sidebar Resource Browser"
+          description="Also show the resource browser panel in the left sidebar (always available in composer)"
+          checked={settingsStore.sidebarBrowser()}
+          onChange={(v) => settingsStore.setSidebarBrowser(v)}
+        />
       </SettingsSection>
 
       {/* Danger Zone */}
