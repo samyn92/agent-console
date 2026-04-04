@@ -265,7 +265,7 @@ const MainApp = () => {
           <FiMessageSquare class="w-3 h-3" />
           <span>Chats</span>
           <Show when={sidebarTab() === "chats"}>
-            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-accent rounded-full" />
+            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-primary rounded-full" />
           </Show>
         </button>
         <button
@@ -282,7 +282,7 @@ const MainApp = () => {
           <FiZap class="w-3 h-3" />
           <span>Workflows</span>
           <Show when={sidebarTab() === "workflows"}>
-            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-accent rounded-full" />
+            <div class="absolute bottom-0 inset-x-3 h-0.5 bg-primary rounded-full" />
           </Show>
         </button>
       </nav>
@@ -339,7 +339,7 @@ const MainApp = () => {
                           if (isError()) return "border-l-red-400";
                           if (isRetrying()) return "border-l-amber-400";
                           if (isBusy()) return "border-l-success";
-                          if (isActive()) return "border-l-blue-400";
+                          if (isActive()) return "border-l-primary";
                           return "border-l-transparent";
                         };
 
@@ -399,8 +399,8 @@ const MainApp = () => {
                                 : ""
                             } ${
                               isActive()
-                                ? "bg-surface-hover ring-1 ring-border"
-                                : "hover:bg-surface-hover"
+                                ? "bg-surface-2 shadow-sm rounded-r-lg ring-1 ring-border/50 z-10"
+                                : "hover:bg-surface-hover rounded-r-lg text-text-muted"
                             }`}
                             role="listitem"
                             aria-current={isActive() ? "true" : undefined}
@@ -423,7 +423,7 @@ const MainApp = () => {
                                   </p>
                                   {/* Unseen dot */}
                                   <Show when={isUnseen() && !isActive()}>
-                                    <span class="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                                    <span class="w-2 h-2 rounded-full bg-accent shrink-0" />
                                   </Show>
                                 </div>
                                 {/* Status + file changes */}
@@ -674,7 +674,7 @@ const MainApp = () => {
                                             {formatSessionTitle(session.title)}
                                           </span>
                                           <Show when={isUnseen()}>
-                                            <span class="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                                            <span class="w-2 h-2 rounded-full bg-accent shrink-0" />
                                           </Show>
                                         </div>
                                         <div class="flex items-center gap-2 mt-0.5">
