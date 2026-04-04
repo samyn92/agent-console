@@ -335,12 +335,12 @@ const MainApp = () => {
 
                         // Determine left accent color
                         const accentColor = () => {
-                          if (isPendingPermission()) return "border-l-yellow-400";
-                          if (isError()) return "border-l-red-400";
-                          if (isRetrying()) return "border-l-amber-400";
-                          if (isBusy()) return "border-l-success";
-                          if (isActive()) return "border-l-primary";
-                          return "border-l-transparent";
+                          if (isPendingPermission()) return "bg-yellow-400";
+                          if (isError()) return "bg-red-400";
+                          if (isRetrying()) return "bg-amber-400";
+                          if (isBusy()) return "bg-success";
+                          if (isActive()) return "bg-primary";
+                          return "bg-transparent";
                         };
 
                         // Determine status line content
@@ -389,7 +389,7 @@ const MainApp = () => {
                           <button
                             onClick={() => openChat(session.id)}
                             onContextMenu={(e) => handleContextMenu(e, session.id)}
-                            class={`relative w-full flex flex-col text-left transition-all duration-150 group border-l-2 ${accentColor()} ${
+                            class={`relative w-full flex flex-col text-left transition-all duration-150 group rounded-lg mb-0.5 ${
                               (isBusy() || isRetrying() || isPendingPermission())
                                 ? `session-row-processing ${
                                     isPendingPermission() ? "session-row-processing--warning"
@@ -399,13 +399,14 @@ const MainApp = () => {
                                 : ""
                             } ${
                               isActive()
-                                ? "bg-surface-2 shadow-sm rounded-r-lg ring-1 ring-border/50 z-10"
-                                : "hover:bg-surface-hover rounded-r-lg text-text-muted"
+                                ? "bg-primary/[0.08] shadow-sm ring-1 ring-border/50 z-10"
+                                : "hover:bg-surface-hover text-text-muted"
                             }`}
                             role="listitem"
                             aria-current={isActive() ? "true" : undefined}
                             aria-label={`Chat: ${formatSessionTitle(session.title)}`}
                           >
+                            <div class={`absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full transition-colors ${accentColor()}`} />
                             <div class="flex items-start gap-2.5 pl-2 pr-2.5 py-2 w-full">
                               {/* Left indicator */}
                               <div class="flex items-center justify-center w-4 h-4 mt-0.5 shrink-0">
@@ -604,11 +605,11 @@ const MainApp = () => {
                                 const summary = () => session.summary;
 
                                 const accentColor = () => {
-                                  if (isPendingPermission()) return "border-l-yellow-400";
-                                  if (isError()) return "border-l-red-400";
-                                  if (isRetrying()) return "border-l-amber-400";
-                                  if (isBusy()) return "border-l-success";
-                                  return "border-l-transparent";
+                                  if (isPendingPermission()) return "bg-yellow-400";
+                                  if (isError()) return "bg-red-400";
+                                  if (isRetrying()) return "bg-amber-400";
+                                  if (isBusy()) return "bg-success";
+                                  return "bg-transparent";
                                 };
 
                                 const statusText = () => {
@@ -652,7 +653,7 @@ const MainApp = () => {
                                   <div
                                     onClick={() => openChat(session.id)}
                                     onContextMenu={(e) => handleContextMenu(e, session.id)}
-                                    class={`relative flex flex-col hover:bg-surface-hover cursor-pointer group transition-colors border-l-2 ${accentColor()} ${
+                                    class={`relative flex flex-col hover:bg-surface-hover rounded-lg mb-0.5 cursor-pointer group transition-colors ${
                                       (isBusy() || isRetrying() || isPendingPermission())
                                         ? `session-row-processing ${
                                             isPendingPermission() ? "session-row-processing--warning"
@@ -666,6 +667,7 @@ const MainApp = () => {
                                     aria-label={`Chat: ${formatSessionTitle(session.title)}`}
                                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openChat(session.id); } }}
                                   >
+                                    <div class={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full transition-colors ${accentColor()}`} />
                                     <div class="flex items-center gap-2.5 px-2.5 py-2">
                                       {leftIcon()}
                                       <div class="min-w-0 flex-1">
